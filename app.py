@@ -226,6 +226,7 @@ class Api:
 
     def __init__(self):
         self._current_path = None
+        self._window = None
 
     @property
     def current_path(self):
@@ -233,10 +234,7 @@ class Api:
 
     def _get_window(self):
         """Get the webview window reliably."""
-        try:
-            return webview.windows[0]
-        except (IndexError, AttributeError):
-            return None
+        return self._window
 
     def save_file(self, content, filename):
         """Save directly to the original file path, or ask where."""
@@ -455,6 +453,9 @@ def build_html(md_content, md_name, md_folder):
 _tray = None
 _quitting = False
 
+_windows: list[dict] = []  # {'window': Window, 'api': Api, 'temp_html': str}
+_windows_lock = threading.Lock()
+
 
 def _get_exe_path():
     """Get the path to the current executable."""
@@ -603,24 +604,107 @@ def _setup_tray():
     _tray.run_detached()
 
 
-def _on_closing():
-    """Called when the user clicks X — hide instead of quit."""
-    if _quitting:
-        return True
-    w = webview.windows[0]
-    w.hide()
-    return False
+def _make_on_closing(window):
+    """Factory: return a per-window closing handler."""
+    def _on_closing():
+        if _quitting:
+            return True
+        with _windows_lock:
+            if len(_windows) > 1:
+                # Non-last window: remove from registry, allow destruction
+                for i, entry in enumerate(_windows):
+                    if entry['window'] is window:
+                        _windows.pop(i)
+                        # Clean up temp HTML for this window
+                        tmp = entry.get('temp_html')
+                        if tmp and os.path.isfile(tmp):
+                            try:
+                                os.unlink(tmp)
+                            except Exception:
+                                pass
+                        break
+                return True
+            else:
+                # Last window: hide to tray
+                window.hide()
+                return False
+    return _on_closing
+
+
+def _create_window(filepath=None):
+    """Create a new MDLook window with its own Api instance.
+
+    If filepath is given, load that file; otherwise load example.md.
+    Can be called from any thread after webview.start() is running —
+    pywebview queues the create_window call to the GUI thread internally.
+    """
+    api_inst = Api()
+
+    md_content = ''
+    md_name = ''
+    md_folder = ''
+
+    if filepath and os.path.isfile(filepath):
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                md_content = f.read()
+            md_name = os.path.basename(filepath)
+            md_folder = os.path.dirname(os.path.abspath(filepath))
+            api_inst._current_path = filepath
+        except Exception:
+            pass
+    else:
+        _example = os.path.join(
+            getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__))),
+            'example.md'
+        )
+        if os.path.isfile(_example):
+            try:
+                with open(_example, 'r', encoding='utf-8') as f:
+                    md_content = f.read()
+                md_name = 'example.md'
+            except Exception:
+                pass
+
+    html_path = build_html(md_content, md_name, md_folder)
+    file_url = 'file:///' + html_path.replace('\\', '/')
+    title = md_name + ' — MDLook' if md_name else 'MDLook'
+
+    window = webview.create_window(
+        title,
+        url=file_url,
+        js_api=api_inst,
+        width=960,
+        height=720,
+        min_size=(600, 400),
+    )
+    api_inst._window = window
+
+    entry = {'window': window, 'api': api_inst, 'temp_html': html_path}
+    with _windows_lock:
+        _windows.append(entry)
+
+    window.events.closing += _make_on_closing(window)
+
+    return window
 
 
 def on_loaded():
     """Called after the window is shown — build the heavy template and navigate."""
 
     def _load():
+        with _windows_lock:
+            first_entry = _windows[0] if _windows else None
+        if first_entry is None:
+            return
+        w = first_entry['window']
+        api_inst = first_entry['api']
+
         if SILENT_MODE:
             import time
             time.sleep(0.3)
             try:
-                webview.windows[0].hide()
+                w.hide()
             except Exception:
                 pass
 
@@ -634,7 +718,7 @@ def on_loaded():
                 md_content = f.read()
             md_name = os.path.basename(arg)
             md_folder = os.path.dirname(os.path.abspath(arg))
-            api._current_path = arg
+            api_inst._current_path = arg
         else:
             # Load example.md
             _example = os.path.join(
@@ -647,11 +731,14 @@ def on_loaded():
                 md_name = 'example.md'
 
         html_path = build_html(md_content, md_name, md_folder)
+        # Update temp_html reference for this window's entry
+        with _windows_lock:
+            if _windows and _windows[0]['window'] is w:
+                _windows[0]['temp_html'] = html_path
         file_url = 'file:///' + html_path.replace('\\', '/')
 
         title = md_name + ' — ' + 'MDLook' if md_name else 'MDLook'
 
-        w = webview.windows[0]
         w.load_url(file_url)
         w.set_title(title)
 
@@ -659,37 +746,47 @@ def on_loaded():
     t.start()
 
 
-# ── Main ──
-if _signal_existing_instance():
-    sys.exit(0)
+def main():
+    # ── Main ──
+    if _signal_existing_instance():
+        sys.exit(0)
 
-_start_ipc_listener()
-_setup_tray()
+    _start_ipc_listener()
+    _setup_tray()
 
-api = Api()
+    api = Api()
 
-_loading_fd, _loading_path = tempfile.mkstemp(suffix='.html', prefix='mdlook_load_')
-with os.fdopen(_loading_fd, 'w', encoding='utf-8') as f:
-    f.write(LOADING_HTML)
-loading_url = 'file:///' + _loading_path.replace('\\', '/')
+    _loading_fd, _loading_path = tempfile.mkstemp(suffix='.html', prefix='mdlook_load_')
+    with os.fdopen(_loading_fd, 'w', encoding='utf-8') as f:
+        f.write(LOADING_HTML)
+    loading_url = 'file:///' + _loading_path.replace('\\', '/')
 
-window = webview.create_window(
-    'MDLook',
-    url=loading_url,
-    js_api=api,
-    width=960,
-    height=720,
-    min_size=(600, 400),
-    minimized=SILENT_MODE,
-    hidden=SILENT_MODE,
-)
+    window = webview.create_window(
+        'MDLook',
+        url=loading_url,
+        js_api=api,
+        width=960,
+        height=720,
+        min_size=(600, 400),
+        minimized=SILENT_MODE,
+        hidden=SILENT_MODE,
+    )
+    api._window = window
 
-window.events.closing += _on_closing
+    entry = {'window': window, 'api': api, 'temp_html': _loading_path}
+    with _windows_lock:
+        _windows.append(entry)
 
-webview.start(func=on_loaded, gui='edgechromium', debug=False)
+    window.events.closing += _make_on_closing(window)
 
-_tray.stop()
-try:
-    os.unlink(_loading_path)
-except Exception:
-    pass
+    webview.start(func=on_loaded, gui='edgechromium', debug=False)
+
+    _tray.stop()
+    try:
+        os.unlink(_loading_path)
+    except Exception:
+        pass
+
+
+if __name__ == '__main__':
+    main()
