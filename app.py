@@ -132,9 +132,10 @@ def _load_file_in_window(filepath):
         name = os.path.basename(filepath)
         with _windows_lock:
             first_entry = _windows[0] if _windows else None
-        if first_entry:
-            first_entry['api']._current_path = filepath
-        w = webview.windows[0]
+        if not first_entry:
+            return
+        first_entry['api']._current_path = filepath
+        w = first_entry['window']
         js_content = json.dumps(content)
         js_name = json.dumps(name)
         w.evaluate_js(
