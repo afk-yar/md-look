@@ -171,7 +171,14 @@ _temp_html = []
 
 
 def cleanup():
-    for path in _temp_html:
+    # Collect all known temp paths: global list + per-window entries
+    paths = set(_temp_html)
+    with _windows_lock:
+        for entry in _windows:
+            tmp = entry.get('temp_html')
+            if tmp:
+                paths.add(tmp)
+    for path in paths:
         if os.path.isfile(path):
             try:
                 os.unlink(path)
@@ -558,7 +565,17 @@ def _setup_tray():
     icon_img = Image.open(ICON_PATH)
 
     def on_show(icon, item):
-        _force_foreground()
+        with _windows_lock:
+            has_windows = bool(_windows)
+        if has_windows:
+            _force_foreground()
+        else:
+            _create_window(None)
+
+    def on_open_file(icon, item):
+        path = _powershell_open_dialog()
+        if path:
+            _create_window(path)
 
     def on_startup(icon, item):
         _toggle_startup()
@@ -569,7 +586,6 @@ def _setup_tray():
     def on_quit(icon, item):
         global _quitting
         _quitting = True
-        icon.stop()
         with _windows_lock:
             windows_to_destroy = [e['window'] for e in _windows]
         for w in windows_to_destroy:
@@ -577,9 +593,11 @@ def _setup_tray():
                 w.destroy()
             except Exception:
                 pass
+        icon.stop()
 
     menu = pystray.Menu(
         pystray.MenuItem('Show MDLook', on_show, default=True),
+        pystray.MenuItem('Open File…', on_open_file),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem('Start with Windows', on_startup,
                          checked=lambda item: _is_startup_enabled()),
