@@ -46,10 +46,16 @@ import webview
 
 
 def _force_foreground():
-    """Show, restore, and force the webview window to the foreground."""
-    w = webview.windows[0]
-    w.show()
-    w.restore()
+    """Show all hidden MDLook windows, restore and force them to the foreground."""
+    # Show all registered windows that are hidden
+    with _windows_lock:
+        entries = list(_windows)
+    for entry in entries:
+        try:
+            entry['window'].show()
+            entry['window'].restore()
+        except Exception:
+            pass
 
     import time
     time.sleep(0.15)
@@ -83,7 +89,7 @@ def _force_foreground():
             user32.SetForegroundWindow(h)
             user32.BringWindowToTop(h)
             AttachThreadInput(our_tid, fg_tid, False)
-            return False
+            # Continue enumeration — raise all MDLook windows, not just the first
         return True
 
     try:
@@ -124,32 +130,6 @@ def _signal_existing_instance():
         return False
 
 
-def _load_file_in_window(filepath):
-    """Load a file into the existing window via JS."""
-    try:
-        with open(filepath, 'r', encoding='utf-8') as f:
-            content = f.read()
-        name = os.path.basename(filepath)
-        with _windows_lock:
-            first_entry = _windows[0] if _windows else None
-        if not first_entry:
-            return
-        first_entry['api']._current_path = filepath
-        w = first_entry['window']
-        js_content = json.dumps(content)
-        js_name = json.dumps(name)
-        w.evaluate_js(
-            '\n            rawMd = ' + js_content +
-            ';\n            fileName = ' + js_name +
-            ";\n            hasUnsaved = false;\n            document.body.classList.remove('unsaved');\n            document.querySelector('#fn').textContent = " + js_name +
-            ';\n            document.title = ' + js_name +
-            " + ' \\u2014 MDLook';\n            var ed = document.querySelector('#editor');\n            if(ed) ed.value = rawMd;\n            if(typeof clearAutoSave === 'function') clearAutoSave();\n            if(typeof setMode === 'function') setMode('read');\n        "
-        )
-        _force_foreground()
-    except Exception:
-        pass
-
-
 def _start_ipc_listener():
     """Listen for signals from new instances."""
 
@@ -170,7 +150,7 @@ def _start_ipc_listener():
                 if data.startswith('OPEN:'):
                     filepath = data[5:]
                     if os.path.isfile(filepath):
-                        _load_file_in_window(filepath)
+                        _create_window(filepath)
                 elif data == 'SHOW':
                     _force_foreground()
             except socket.timeout:
@@ -590,8 +570,13 @@ def _setup_tray():
         global _quitting
         _quitting = True
         icon.stop()
-        w = webview.windows[0]
-        w.destroy()
+        with _windows_lock:
+            windows_to_destroy = [e['window'] for e in _windows]
+        for w in windows_to_destroy:
+            try:
+                w.destroy()
+            except Exception:
+                pass
 
     menu = pystray.Menu(
         pystray.MenuItem('Show MDLook', on_show, default=True),
