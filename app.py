@@ -130,7 +130,10 @@ def _load_file_in_window(filepath):
         with open(filepath, 'r', encoding='utf-8') as f:
             content = f.read()
         name = os.path.basename(filepath)
-        api._current_path = filepath
+        with _windows_lock:
+            first_entry = _windows[0] if _windows else None
+        if first_entry:
+            first_entry['api']._current_path = filepath
         w = webview.windows[0]
         js_content = json.dumps(content)
         js_name = json.dumps(name)
