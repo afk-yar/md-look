@@ -310,6 +310,22 @@ for node in ast.walk(tree):
 results.append(('PASS' if ipc_checks_isfile else 'FAIL',
                 'T-02 edge: IPC OPEN: os.path.isfile guard before _create_window'))
 
+# ── Test 19 (T-02 edge): _make_on_closing: non-last window pops from _windows ──
+on_closing_pops_registry = False
+for node in ast.walk(tree):
+    if isinstance(node, ast.FunctionDef) and node.name == '_make_on_closing':
+        for child in ast.walk(node):
+            if isinstance(child, ast.FunctionDef) and child.name == '_on_closing':
+                for subchild in ast.walk(child):
+                    if isinstance(subchild, ast.Call):
+                        f = subchild.func
+                        if (isinstance(f, ast.Attribute) and f.attr == 'pop'
+                                and isinstance(f.value, ast.Name)
+                                and f.value.id == '_windows'):
+                            on_closing_pops_registry = True
+results.append(('PASS' if on_closing_pops_registry else 'FAIL',
+                'T-02 edge: _make_on_closing: non-last window pops from _windows'))
+
 # ── Print results ──
 print()
 passes = sum(1 for r in results if r[0] == 'PASS')
