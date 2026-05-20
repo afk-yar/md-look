@@ -1,8 +1,10 @@
 """AST-based tests for T-01 requirements (no runtime deps needed)."""
 import ast
+import os
 import sys
 
-src = open('E:/_Проекты/pet/md-look/app.py', 'r', encoding='utf-8').read()
+_test_dir = os.path.dirname(os.path.abspath(__file__))
+src = open(os.path.join(_test_dir, 'app.py'), 'r', encoding='utf-8').read()
 tree = ast.parse(src)
 
 results = []
@@ -235,6 +237,78 @@ results.append(('PASS' if on_loaded_no_global_api else 'FAIL',
                 'on_loaded: no bare global api reference'))
 results.append(('PASS' if on_loaded_uses_registry else 'FAIL',
                 'on_loaded: uses _windows registry'))
+
+# ── Test 15 (T-02 edge): _make_on_closing: if _quitting → return True ──
+on_closing_quitting_return_true = False
+for node in ast.walk(tree):
+    if isinstance(node, ast.FunctionDef) and node.name == '_make_on_closing':
+        for child in ast.walk(node):
+            if isinstance(child, ast.FunctionDef) and child.name == '_on_closing':
+                for stmt in child.body:
+                    if isinstance(stmt, ast.If):
+                        if isinstance(stmt.test, ast.Name) and stmt.test.id == '_quitting':
+                            for s in stmt.body:
+                                if (isinstance(s, ast.Return)
+                                        and isinstance(s.value, ast.Constant)
+                                        and s.value.value is True):
+                                    on_closing_quitting_return_true = True
+results.append(('PASS' if on_closing_quitting_return_true else 'FAIL',
+                'T-02 edge: _make_on_closing: if _quitting: return True'))
+
+# ── Test 16 (T-02 edge): _make_on_closing: last window → hide + return False ──
+on_closing_last_hide_false = False
+for node in ast.walk(tree):
+    if isinstance(node, ast.FunctionDef) and node.name == '_make_on_closing':
+        for child in ast.walk(node):
+            if isinstance(child, ast.FunctionDef) and child.name == '_on_closing':
+                for stmt in child.body:
+                    if isinstance(stmt, ast.With):
+                        for item in ast.walk(stmt):
+                            if isinstance(item, ast.If) and hasattr(item, 'orelse') and item.orelse:
+                                hide_found = False
+                                ret_false = False
+                                for s in item.orelse:
+                                    if isinstance(s, ast.Expr) and isinstance(s.value, ast.Call):
+                                        f = s.value.func
+                                        if isinstance(f, ast.Attribute) and f.attr == 'hide':
+                                            hide_found = True
+                                    if (isinstance(s, ast.Return)
+                                            and isinstance(s.value, ast.Constant)
+                                            and s.value.value is False):
+                                        ret_false = True
+                                if hide_found and ret_false:
+                                    on_closing_last_hide_false = True
+results.append(('PASS' if on_closing_last_hide_false else 'FAIL',
+                'T-02 edge: _make_on_closing: last window → hide() + return False'))
+
+# ── Test 17 (T-02 edge): on_quit uses _windows_lock ──
+on_quit_uses_lock = False
+for node in ast.walk(tree):
+    if isinstance(node, ast.FunctionDef) and node.name == '_setup_tray':
+        for child in ast.walk(node):
+            if isinstance(child, ast.FunctionDef) and child.name == 'on_quit':
+                for subchild in ast.walk(child):
+                    if isinstance(subchild, ast.With):
+                        for item in subchild.items:
+                            if (isinstance(item.context_expr, ast.Name)
+                                    and item.context_expr.id == '_windows_lock'):
+                                on_quit_uses_lock = True
+results.append(('PASS' if on_quit_uses_lock else 'FAIL',
+                'T-02 edge: on_quit uses _windows_lock when reading _windows'))
+
+# ── Test 18 (T-02 edge): IPC OPEN checks os.path.isfile before _create_window ──
+ipc_checks_isfile = False
+for node in ast.walk(tree):
+    if isinstance(node, ast.FunctionDef) and node.name == '_start_ipc_listener':
+        for child in ast.walk(node):
+            if isinstance(child, ast.If):
+                test = child.test
+                if isinstance(test, ast.Call):
+                    f = test.func
+                    if isinstance(f, ast.Attribute) and f.attr == 'isfile':
+                        ipc_checks_isfile = True
+results.append(('PASS' if ipc_checks_isfile else 'FAIL',
+                'T-02 edge: IPC OPEN: os.path.isfile guard before _create_window'))
 
 # ── Print results ──
 print()
