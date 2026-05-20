@@ -244,6 +244,13 @@ has_force_reload = 'reload_file(true)' in bridge_js
 results.append(('PASS' if has_force_reload else 'FAIL',
                 'T-02: BRIDGE_JS refresh button calls reload_file(true) (force=True)'))
 
+# Test 20 (T-02): Refresh button has appConfirm guard for unsaved changes
+# The appConfirm call must appear between btnRefresh click handler and reload_file(true)
+refresh_section = bridge_js[bridge_js.find('btnRefresh'):] if 'btnRefresh' in bridge_js else ''
+has_refresh_confirm = 'appConfirm' in refresh_section and 'Unsaved' in refresh_section
+results.append(('PASS' if has_refresh_confirm else 'FAIL',
+                'T-02: BRIDGE_JS refresh button has appConfirm guard for unsaved changes'))
+
 # ── Print results ──
 print()
 passes = sum(1 for r in results if r[0] == 'PASS')

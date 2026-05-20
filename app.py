@@ -421,6 +421,7 @@ BRIDGE_JS = """
     btnRefresh.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width:15px;height:15px"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>';
     if(btnOpen2 && btnOpen2.parentNode) btnOpen2.parentNode.insertBefore(btnRefresh, btnOpen2.nextSibling);
     btnRefresh.addEventListener('click', async function(){
+      if(hasUnsaved && !await appConfirm('Unsaved changes. Reload and discard?')) return;
       var res = await window.pywebview.api.reload_file(true);
       if(!res) return;
       rawMd = res.content;
