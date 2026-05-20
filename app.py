@@ -218,6 +218,7 @@ class Api:
     def __init__(self):
         self._current_path = None
         self._window = None
+        self._file_mtime = None
 
     @property
     def current_path(self):
@@ -249,6 +250,7 @@ class Api:
             with open(path, 'w', encoding='utf-8') as f:
                 f.write(content)
             self._current_path = path
+            self._file_mtime = os.path.getmtime(path)
             return {'ok': True, 'path': path, 'name': os.path.basename(path)}
         except Exception as e:
             return {'ok': False, 'reason': str(e)}
@@ -271,6 +273,7 @@ class Api:
             with open(path, 'w', encoding='utf-8') as f:
                 f.write(content)
             self._current_path = path
+            self._file_mtime = os.path.getmtime(path)
             return {'ok': True, 'path': path, 'name': os.path.basename(path)}
         except Exception as e:
             return {'ok': False, 'reason': str(e)}
@@ -284,6 +287,26 @@ class Api:
             with open(path, 'r', encoding='utf-8') as f:
                 content = f.read()
             self._current_path = path
+            self._file_mtime = os.path.getmtime(path)
+            return {'content': content, 'name': os.path.basename(path), 'path': path}
+        except Exception:
+            return None
+
+    def reload_file(self, force=False):
+        """Re-read the current file from disk if it changed (or always if force=True).
+
+        Returns {'content': ..., 'name': ..., 'path': ...} on success, None otherwise.
+        """
+        path = self._current_path
+        if not path or not os.path.isfile(path):
+            return None
+        try:
+            mtime = os.path.getmtime(path)
+            if not force and self._file_mtime is not None and mtime == self._file_mtime:
+                return None
+            with open(path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            self._file_mtime = mtime
             return {'content': content, 'name': os.path.basename(path), 'path': path}
         except Exception:
             return None
@@ -387,6 +410,46 @@ BRIDGE_JS = """
       if(reader) reader.style.padding = '32px 48px 80px 32px';
       var html = '<!DOCTYPE html>\\n' + clone.outerHTML;
       window.pywebview.api.save_html(html, fn);
+    });
+
+    // ── Refresh button: force-reload from disk ──
+    var btnOpen2 = document.querySelector('#btnOpen');
+    var btnRefresh = document.createElement('button');
+    btnRefresh.id = 'btnRefresh';
+    btnRefresh.className = btnOpen2 ? btnOpen2.className : '';
+    btnRefresh.setAttribute('data-tip', 'Reload file');
+    btnRefresh.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width:15px;height:15px"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>';
+    if(btnOpen2 && btnOpen2.parentNode) btnOpen2.parentNode.insertBefore(btnRefresh, btnOpen2.nextSibling);
+    btnRefresh.addEventListener('click', async function(){
+      var res = await window.pywebview.api.reload_file(true);
+      if(!res) return;
+      rawMd = res.content;
+      fileName = res.name;
+      var ed = document.querySelector('#editor');
+      if(ed) ed.value = rawMd;
+      hasUnsaved = false;
+      document.body.classList.remove('unsaved');
+      document.querySelector('#fn').textContent = res.name;
+      document.title = res.name + ' \\u2014 MDLook';
+      setMode('read');
+    });
+
+    // ── Reload on focus: re-read file when window regains focus ──
+    var _reloadDebounceTimer = null;
+    window.addEventListener('focus', function(){
+      if(_reloadDebounceTimer) return;
+      _reloadDebounceTimer = setTimeout(function(){ _reloadDebounceTimer = null; }, 1000);
+      if(hasUnsaved) return;
+      window.pywebview.api.reload_file().then(function(res){
+        if(!res) return;
+        rawMd = res.content;
+        fileName = res.name;
+        var ed = document.querySelector('#editor');
+        if(ed) ed.value = rawMd;
+        document.querySelector('#fn').textContent = res.name;
+        document.title = res.name + ' \\u2014 MDLook';
+        setMode('read');
+      });
     });
   }
 
@@ -658,6 +721,7 @@ def _create_window(filepath=None):
             md_name = os.path.basename(filepath)
             md_folder = os.path.dirname(os.path.abspath(filepath))
             api_inst._current_path = filepath
+            api_inst._file_mtime = os.path.getmtime(filepath)
         except Exception:
             pass
     else:
@@ -726,6 +790,7 @@ def on_loaded():
             md_name = os.path.basename(arg)
             md_folder = os.path.dirname(os.path.abspath(arg))
             api_inst._current_path = arg
+            api_inst._file_mtime = os.path.getmtime(arg)
         else:
             # Load example.md
             _example = os.path.join(
