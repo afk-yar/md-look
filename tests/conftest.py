@@ -65,16 +65,14 @@ def _make_pil_stub():
     return pil, img_mod
 
 
-# Install stubs into sys.modules if real packages not importable
+# Always install stubs — even if real packages are importable, tests must
+# use stubs to avoid launching real GUI / tray (Finding 2: flaky on CI).
 def _install_stubs():
-    if 'webview' not in sys.modules:
-        sys.modules['webview'] = _make_webview_stub()
-    if 'pystray' not in sys.modules:
-        sys.modules['pystray'] = _make_pystray_stub()
-    if 'PIL' not in sys.modules:
-        pil, img_mod = _make_pil_stub()
-        sys.modules['PIL'] = pil
-        sys.modules['PIL.Image'] = img_mod
+    sys.modules['webview'] = _make_webview_stub()
+    sys.modules['pystray'] = _make_pystray_stub()
+    pil, img_mod = _make_pil_stub()
+    sys.modules['PIL'] = pil
+    sys.modules['PIL.Image'] = img_mod
 
 
 _install_stubs()
