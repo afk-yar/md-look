@@ -34,18 +34,19 @@ class TestIpcProtocol:
             s.bind(('127.0.0.1', 0))
             return s.getsockname()[1]
 
-    def _start_listener(self, port, on_create_window=None, on_force_foreground=None):
-        """Start IPC listener on given port, patching handler functions."""
-        mock_create = on_create_window or MagicMock()
-        mock_fg = on_force_foreground or MagicMock()
-
-        with patch.object(app, 'IPC_PORT', port), \
-             patch.object(app, '_create_window', mock_create), \
-             patch.object(app, '_force_foreground', mock_fg):
-            app._start_ipc_listener()
-            # Give thread time to bind
-            time.sleep(0.1)
-            return mock_create, mock_fg
+    def _wait_for_listener(self, port, timeout=5):
+        """Block until the IPC listener is accepting connections."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                s = socket.socket()
+                s.settimeout(0.1)
+                s.connect(('127.0.0.1', port))
+                s.close()
+                return
+            except (ConnectionRefusedError, OSError):
+                time.sleep(0.01)
+        raise RuntimeError(f"Listener on port {port} didn't start within {timeout}s")
 
     def test_open_message_calls_create_window(self, tmp_path):
         """OPEN:/path/to/file.md → _create_window called with that path."""
@@ -54,68 +55,87 @@ class TestIpcProtocol:
         filepath = str(md_file)
 
         port = self._free_port()
-        mock_create = MagicMock()
-        mock_fg = MagicMock()
+        event = threading.Event()
+
+        def mock_create(path):
+            event.set()
 
         with patch.object(app, 'IPC_PORT', port), \
-             patch.object(app, '_create_window', mock_create), \
-             patch.object(app, '_force_foreground', mock_fg), \
+             patch.object(app, '_create_window', side_effect=mock_create) as m_create, \
+             patch.object(app, '_force_foreground', MagicMock()) as m_fg, \
              patch.object(app, '_quitting', False):
             app._start_ipc_listener()
-            time.sleep(0.1)
+            self._wait_for_listener(port)
 
             s = socket.socket()
             s.connect(('127.0.0.1', port))
             s.sendall(('OPEN:' + filepath).encode('utf-8'))
             s.close()
-            time.sleep(0.2)
 
-        mock_create.assert_called_once_with(filepath)
-        mock_fg.assert_not_called()
+            assert event.wait(timeout=5), "_create_window was not called within 5s"
+
+        m_create.assert_called_once_with(filepath)
+        m_fg.assert_not_called()
 
     def test_show_message_calls_force_foreground(self):
         """SHOW → _force_foreground called."""
         port = self._free_port()
-        mock_create = MagicMock()
-        mock_fg = MagicMock()
+        event = threading.Event()
+
+        def mock_fg():
+            event.set()
 
         with patch.object(app, 'IPC_PORT', port), \
-             patch.object(app, '_create_window', mock_create), \
-             patch.object(app, '_force_foreground', mock_fg), \
+             patch.object(app, '_create_window', MagicMock()) as m_create, \
+             patch.object(app, '_force_foreground', side_effect=mock_fg) as m_fg, \
              patch.object(app, '_quitting', False):
             app._start_ipc_listener()
-            time.sleep(0.1)
+            self._wait_for_listener(port)
 
             s = socket.socket()
             s.connect(('127.0.0.1', port))
             s.sendall(b'SHOW')
             s.close()
-            time.sleep(0.2)
 
-        mock_fg.assert_called_once()
-        mock_create.assert_not_called()
+            assert event.wait(timeout=5), "_force_foreground was not called within 5s"
+
+        m_fg.assert_called_once()
+        m_create.assert_not_called()
 
     def test_garbage_message_does_not_crash(self):
         """Garbage message → no exception, connection handled cleanly."""
         port = self._free_port()
-        mock_create = MagicMock()
-        mock_fg = MagicMock()
+        # For garbage we can't wait for a handler call (nothing fires).
+        # Instead, send garbage then send a valid SHOW — the SHOW event proves
+        # the listener survived the garbage without crashing.
+        event = threading.Event()
+
+        def mock_fg():
+            event.set()
 
         with patch.object(app, 'IPC_PORT', port), \
-             patch.object(app, '_create_window', mock_create), \
-             patch.object(app, '_force_foreground', mock_fg), \
+             patch.object(app, '_create_window', MagicMock()) as m_create, \
+             patch.object(app, '_force_foreground', side_effect=mock_fg) as m_fg, \
              patch.object(app, '_quitting', False):
             app._start_ipc_listener()
-            time.sleep(0.1)
+            self._wait_for_listener(port)
 
+            # Send garbage
             s = socket.socket()
             s.connect(('127.0.0.1', port))
             s.sendall(b'\x00\xff\xfe garbage \n\r\t')
             s.close()
-            time.sleep(0.2)
 
-        mock_create.assert_not_called()
-        mock_fg.assert_not_called()
+            # Now send a valid SHOW to verify listener is still alive
+            s2 = socket.socket()
+            s2.settimeout(2)
+            s2.connect(('127.0.0.1', port))
+            s2.sendall(b'SHOW')
+            s2.close()
+
+            assert event.wait(timeout=5), "Listener died after garbage message"
+
+        m_create.assert_not_called()
 
     def test_signal_existing_instance_returns_true_when_listener_running(self):
         """_signal_existing_instance() → True when listener is active."""
@@ -124,7 +144,7 @@ class TestIpcProtocol:
         with patch.object(app, 'IPC_PORT', port), \
              patch.object(app, '_quitting', False):
             app._start_ipc_listener()
-            time.sleep(0.1)
+            self._wait_for_listener(port)
 
             with patch.object(app, 'IPC_PORT', port):
                 result = app._signal_existing_instance()
@@ -144,23 +164,36 @@ class TestIpcProtocol:
     def test_open_nonexistent_file_does_not_call_create_window(self):
         """OPEN:/nonexistent/path.md → _create_window not called (file check fails)."""
         port = self._free_port()
-        mock_create = MagicMock()
-        mock_fg = MagicMock()
+        # Listener skips non-existent files, so _create_window won't fire.
+        # Send a SHOW afterwards to confirm the listener processed the OPEN message.
+        event = threading.Event()
+
+        def mock_fg():
+            event.set()
 
         with patch.object(app, 'IPC_PORT', port), \
-             patch.object(app, '_create_window', mock_create), \
-             patch.object(app, '_force_foreground', mock_fg), \
+             patch.object(app, '_create_window', MagicMock()) as m_create, \
+             patch.object(app, '_force_foreground', side_effect=mock_fg), \
              patch.object(app, '_quitting', False):
             app._start_ipc_listener()
-            time.sleep(0.1)
+            self._wait_for_listener(port)
 
             s = socket.socket()
             s.connect(('127.0.0.1', port))
             s.sendall(b'OPEN:/nonexistent/no/such/file.md')
             s.close()
-            time.sleep(0.2)
 
-        mock_create.assert_not_called()
+            # Follow up with SHOW to sequence — once SHOW fires, the OPEN
+            # has definitely been processed already.
+            s2 = socket.socket()
+            s2.settimeout(2)
+            s2.connect(('127.0.0.1', port))
+            s2.sendall(b'SHOW')
+            s2.close()
+
+            assert event.wait(timeout=5), "Listener didn't process follow-up SHOW"
+
+        m_create.assert_not_called()
 
 
 # ===========================================================================
@@ -184,23 +217,17 @@ class TestWindowLifecycle:
         assert 'api' in entry
         assert 'temp_html' in entry
 
-    def test_create_window_none_loads_example_md(self, patch_template, tmp_path):
+    def test_create_window_none_loads_example_md(self, patch_template, tmp_path, monkeypatch):
         """_create_window(None) -> api._current_path is None (no file set), window created."""
-        # Create a fake example.md next to app.py so _create_window finds it
-        base_dir = os.path.dirname(os.path.abspath(app.__file__))
-        example_path = os.path.join(base_dir, 'example.md')
+        # Create a fake example.md in tmp_path and redirect app.__file__ there
+        # so _create_window's os.path.join(dirname(__file__), 'example.md') finds it
+        example_md = tmp_path / 'example.md'
+        example_md.write_text('# Example\n', encoding='utf-8')
 
-        # Write a temporary example.md if it doesn't exist, clean up after
-        created_example = not os.path.isfile(example_path)
-        if created_example:
-            with open(example_path, 'w', encoding='utf-8') as f:
-                f.write('# Example\n')
+        fake_app_file = str(tmp_path / 'app.py')
+        monkeypatch.setattr(app, '__file__', fake_app_file)
 
-        try:
-            app._create_window(None)
-        finally:
-            if created_example and os.path.isfile(example_path):
-                os.unlink(example_path)
+        app._create_window(None)
 
         with app._windows_lock:
             assert len(app._windows) == 1
@@ -336,6 +363,23 @@ class TestBuildHtml:
         for p in paths:
             assert not os.path.isfile(p)
 
+    def test_empty_content_keeps_edit_mode(self, patch_template):
+        """build_html with empty md_content keeps setMode('edit') in the init script block."""
+        path = app.build_html('', 'empty.md', '/dir')
+        with open(path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        # Empty content → the template init pattern setMode('edit');\n}\n</script> is NOT replaced
+        assert "setMode('edit');\n}\n</script>" in content
+
+    def test_nonempty_content_switches_to_read_mode(self, patch_template):
+        """build_html with non-empty md_content switches init to setMode('read')."""
+        path = app.build_html('# Some content', 'doc.md', '/dir')
+        with open(path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        # Non-empty content → init pattern switched to read
+        assert "setMode('read');\n}\n</script>" in content
+        assert "setMode('edit');\n}\n</script>" not in content
+
 
 # ===========================================================================
 # Group 4 — Api isolation
@@ -401,6 +445,18 @@ class TestApiIsolation:
         assert api1._get_window() is w1
         assert api2._get_window() is w2
 
+    def test_save_file_no_path_dialog_cancelled_returns_not_ok(self):
+        """save_file with no _current_path and cancelled dialog → {'ok': False}."""
+        api = app.Api()
+        w = MagicMock()
+        w.create_file_dialog = MagicMock(return_value=None)
+        api._window = w
+
+        result = api.save_file('some content', 'doc.md')
+
+        assert result['ok'] is False
+        assert result.get('reason') == 'cancelled'
+
 
 # ===========================================================================
 # Group 5 — _get_file_arg parsing
@@ -459,6 +515,13 @@ class TestGetFileArg:
             result = app._get_file_arg()
 
         assert result == str(md.resolve())
+
+    def test_argv_empty_string_arg_returns_none(self):
+        """argv=[app.py, ''] → empty string arg ignored, returns None."""
+        with patch.object(sys, 'argv', ['app.py', '']):
+            result = app._get_file_arg()
+
+        assert result is None
 
 
 # ===========================================================================
