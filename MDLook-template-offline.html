@@ -3991,6 +3991,8 @@ function parseInline(t){
     codeSlots.push(code);
     return '\uE003ICODE'+idx+'\uE003';
   });
+  // Neutralize RAWTEXT HTML tags that swallow all subsequent content
+  t=t.replace(/<(\/?)(style|script|textarea|title|xmp|plaintext)\b([^>]*)>/gi,function(_,sl,tag,rest){return '&lt;'+sl+tag+rest+'&gt;'});
   // Colored text: {color:#hex}text{/color} or {color:name}text{/color}
   // Token names map to CSS variables for automatic dark/light adaptation
   const colorTokens={pink:1,green:1,purple:1,orange:1,cyan:1,red:1,yellow:1,blue:1};
@@ -4014,7 +4016,7 @@ function parseInline(t){
   t=t.replace(/\+\+(.+?)\+\+/g,'<u class="md-underline">$1</u>');
   t=t.replace(/==(.+?)==/g,'<mark>$1</mark>');
   // Restore inline code from slots
-  t=t.replace(/\uE003ICODE(\d+)\uE003/g,function(_,idx){return '<code>'+codeSlots[parseInt(idx)]+'</code>';});
+  t=t.replace(/\uE003ICODE(\d+)\uE003/g,function(_,idx){return '<code>'+esc(codeSlots[parseInt(idx)])+'</code>';});
   t=t.replace(/(^|[^"(])(https?:\/\/[^\s<)]+)/g,'$1<a href="$2" target="_blank" rel="noopener">$2</a>');
   // Color swatches
   t=t.replace(/(#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3}))\b/g,function(m,hex,offset){
@@ -4026,7 +4028,7 @@ function parseInline(t){
   // Restore inline math as placeholders for KaTeX
   t=t.replace(/\uE002IMATH(\d+)\uE002/g,function(_,idx){
     const expr=mathSlots[parseInt(idx)];
-    return '<span class="math-inline" data-math="'+expr.replace(/"/g,'&amp;quot;')+'"></span>';
+    return '<span class="math-inline" data-math="'+esc(expr)+'"></span>';
   });
   return t;
 }
@@ -4079,7 +4081,7 @@ function parseMd(md){
     if(tr===''||tr==='\r'){cl();i++;continue}
     const hm=tr.match(/^(#{1,6})\s+(.+)/);if(hm){cl();const lvl=hm[1].length;const raw=hm[2].replace(/\s*#{1,6}\s*$/,'');const inl=parseInline(raw);const slug='h-'+headingCounter+'-'+slugify(raw);tocEntries.push({level:lvl,text:raw,slug:slug});html+='<h'+lvl+' id="'+slug+'">'+inl+'</h'+lvl+'>';headingCounter++;i++;continue}
     if(/^(-{3,}|_{3,}|\*{3,})\s*$/.test(tr)){cl();html+='<hr>';i++;continue}
-    const bmm=tr.match(/^%%BLOCKMATH(\d+)%%$/);if(bmm){cl();html+='<div class="math-block" data-math="'+blockMathStore[parseInt(bmm[1])].replace(/"/g,'&quot;')+'"></div>';i++;continue}
+    const bmm=tr.match(/^%%BLOCKMATH(\d+)%%$/);if(bmm){cl();html+='<div class="math-block" data-math="'+esc(blockMathStore[parseInt(bmm[1])])+'"></div>';i++;continue}
     if(tr.startsWith('>')){cl();let ql=[];while(i<lines.length){const q=lines[i].trimStart();if(!q.startsWith('>'))break;ql.push(q.replace(/^>\s?/,''));i++}html+='<blockquote>'+parseMd(ql.join('\n'))+'</blockquote>';continue}
     if(tr.includes('|')&&i+1<lines.length&&/^\s*\|?\s*[-:]+/.test(lines[i+1])){cl();const pr=r=>r.replace(/^\|/,'').replace(/\|$/,'').split('|').map(c=>c.trim());const hds=pr(tr),ar=pr(lines[i+1]),al=ar.map(c=>{if(c.startsWith(':')&&c.endsWith(':'))return'center';if(c.endsWith(':'))return'right';return'left'});let th='<table><thead><tr>';hds.forEach((h,j)=>th+='<th style="text-align:'+al[j]+'">'+parseInline(h)+'</th>');th+='</tr></thead><tbody>';i+=2;while(i<lines.length&&lines[i].trim()!==''&&lines[i].includes('|')){const cs=pr(lines[i]);th+='<tr>';cs.forEach((c,j)=>th+='<td style="text-align:'+(al[j]||'left')+'">'+parseInline(c)+'</td>');th+='</tr>';i++}th+='</tbody></table>';html+=th;continue}
     const lineIndent=line.length-line.trimStart().length;
