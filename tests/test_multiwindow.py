@@ -621,3 +621,177 @@ class TestThreadSafety:
 
         assert 'a_done' in results
         # No exceptions means the lock worked correctly
+
+
+# ===========================================================================
+# Group 7 — T-01: Window deduplication and foreground on OPEN: IPC message
+# ===========================================================================
+
+class TestWindowDeduplication:
+    """Test OPEN: IPC deduplication: existing window activated, new window created."""
+
+    def _free_port(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(('127.0.0.1', 0))
+            return s.getsockname()[1]
+
+    def _wait_for_listener(self, port, timeout=5):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                s = socket.socket()
+                s.settimeout(0.1)
+                s.connect(('127.0.0.1', port))
+                s.close()
+                return
+            except (ConnectionRefusedError, OSError):
+                time.sleep(0.01)
+        raise RuntimeError(f"Listener on port {port} didn't start within {timeout}s")
+
+    def test_open_existing_file_activates_existing_window(self, tmp_path):
+        """OPEN: for an already-open file calls _force_foreground_window, not _create_window."""
+        md_file = tmp_path / 'dup.md'
+        md_file.write_text('# Dup', encoding='utf-8')
+        filepath = str(md_file)
+
+        # Populate _windows with a fake entry whose api.current_path matches
+        mock_window = MagicMock(name='ExistingWindow')
+        mock_api = MagicMock()
+        mock_api.current_path = filepath
+        fake_entry = {'window': mock_window, 'api': mock_api, 'temp_html': None}
+
+        port = self._free_port()
+        fg_called = threading.Event()
+        create_called = threading.Event()
+
+        def mock_fg_window(w):
+            fg_called.set()
+
+        def mock_create(path):
+            create_called.set()
+
+        with patch.object(app, 'IPC_PORT', port), \
+             patch.object(app, '_force_foreground_window', side_effect=mock_fg_window) as m_fg, \
+             patch.object(app, '_create_window', side_effect=mock_create) as m_create, \
+             patch.object(app, '_quitting', False):
+            with app._windows_lock:
+                app._windows.append(fake_entry)
+
+            app._start_ipc_listener()
+            self._wait_for_listener(port)
+
+            s = socket.socket()
+            s.connect(('127.0.0.1', port))
+            s.sendall(('OPEN:' + filepath).encode('utf-8'))
+            s.close()
+
+            assert fg_called.wait(timeout=5), '_force_foreground_window not called'
+
+        m_fg.assert_called_once_with(mock_window)
+        m_create.assert_not_called()
+
+    def test_open_new_file_creates_window(self, tmp_path):
+        """OPEN: for a file not yet open calls _create_window."""
+        md_file = tmp_path / 'new.md'
+        md_file.write_text('# New', encoding='utf-8')
+        filepath = str(md_file)
+
+        # Other file open in "existing" window — should NOT match
+        other_file = tmp_path / 'other.md'
+        other_file.write_text('# Other', encoding='utf-8')
+        mock_api = MagicMock()
+        mock_api.current_path = str(other_file)
+        fake_entry = {'window': MagicMock(), 'api': mock_api, 'temp_html': None}
+
+        port = self._free_port()
+        create_called = threading.Event()
+
+        def mock_create(path):
+            create_called.set()
+
+        with patch.object(app, 'IPC_PORT', port), \
+             patch.object(app, '_force_foreground_window', MagicMock()) as m_fg, \
+             patch.object(app, '_create_window', side_effect=mock_create) as m_create, \
+             patch.object(app, '_quitting', False):
+            with app._windows_lock:
+                app._windows.append(fake_entry)
+
+            app._start_ipc_listener()
+            self._wait_for_listener(port)
+
+            s = socket.socket()
+            s.connect(('127.0.0.1', port))
+            s.sendall(('OPEN:' + filepath).encode('utf-8'))
+            s.close()
+
+            assert create_called.wait(timeout=5), '_create_window not called'
+
+        m_create.assert_called_once_with(filepath)
+        m_fg.assert_not_called()
+
+    def test_open_existing_file_case_insensitive(self, tmp_path):
+        """OPEN: deduplication is case-insensitive (normcase comparison)."""
+        md_file = tmp_path / 'Case.md'
+        md_file.write_text('# Case', encoding='utf-8')
+        filepath_lower = str(md_file).lower()  # send lowercase path
+
+        mock_window = MagicMock(name='CaseWindow')
+        mock_api = MagicMock()
+        mock_api.current_path = str(md_file)  # stored with original case
+        fake_entry = {'window': mock_window, 'api': mock_api, 'temp_html': None}
+
+        port = self._free_port()
+        fg_called = threading.Event()
+
+        def mock_fg_window(w):
+            fg_called.set()
+
+        with patch.object(app, 'IPC_PORT', port), \
+             patch.object(app, '_force_foreground_window', side_effect=mock_fg_window) as m_fg, \
+             patch.object(app, '_create_window', MagicMock()) as m_create, \
+             patch.object(app, '_quitting', False):
+            with app._windows_lock:
+                app._windows.append(fake_entry)
+
+            app._start_ipc_listener()
+            self._wait_for_listener(port)
+
+            s = socket.socket()
+            s.connect(('127.0.0.1', port))
+            s.sendall(('OPEN:' + filepath_lower).encode('utf-8'))
+            s.close()
+
+            assert fg_called.wait(timeout=5), 'Case-insensitive dedup did not activate existing window'
+
+        m_fg.assert_called_once_with(mock_window)
+        m_create.assert_not_called()
+
+    def test_open_no_windows_creates_window(self, tmp_path):
+        """OPEN: with empty _windows always creates new window."""
+        md_file = tmp_path / 'fresh.md'
+        md_file.write_text('# Fresh', encoding='utf-8')
+        filepath = str(md_file)
+
+        port = self._free_port()
+        create_called = threading.Event()
+
+        def mock_create(path):
+            create_called.set()
+
+        with patch.object(app, 'IPC_PORT', port), \
+             patch.object(app, '_force_foreground_window', MagicMock()) as m_fg, \
+             patch.object(app, '_create_window', side_effect=mock_create) as m_create, \
+             patch.object(app, '_quitting', False):
+            # _windows is empty (reset by autouse fixture)
+            app._start_ipc_listener()
+            self._wait_for_listener(port)
+
+            s = socket.socket()
+            s.connect(('127.0.0.1', port))
+            s.sendall(('OPEN:' + filepath).encode('utf-8'))
+            s.close()
+
+            assert create_called.wait(timeout=5), '_create_window not called for empty _windows'
+
+        m_create.assert_called_once_with(filepath)
+        m_fg.assert_not_called()

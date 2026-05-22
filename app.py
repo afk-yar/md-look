@@ -98,6 +98,68 @@ def _force_foreground():
         pass
 
 
+def _force_foreground_window(window):
+    """Restore and bring a specific pywebview window to the foreground.
+
+    Shows the window if hidden (tray), then uses Win32 to set foreground
+    by matching the window title.
+    """
+    try:
+        window.show()
+        window.restore()
+    except Exception:
+        pass
+
+    import time
+    time.sleep(0.15)
+
+    # Retrieve the expected title from the window object
+    try:
+        target_title = window.title
+    except Exception:
+        target_title = None
+
+    user32 = ctypes.windll.user32
+    SW_RESTORE = 9
+
+    GetWindowThreadProcessId = user32.GetWindowThreadProcessId
+    GetCurrentThreadId = ctypes.windll.kernel32.GetCurrentThreadId
+    AttachThreadInput = user32.AttachThreadInput
+    EnumWindows = user32.EnumWindows
+
+    WNDENUMPROC = ctypes.WINFUNCTYPE(
+        ctypes.wintypes.BOOL,
+        ctypes.wintypes.HWND,
+        ctypes.wintypes.LPARAM,
+    )
+
+    def callback(h, _):
+        title_buf = ctypes.create_unicode_buffer(512)
+        user32.GetWindowTextW(h, title_buf, 512)
+        t = title_buf.value
+        # Match by exact title if we have it, otherwise match any MDLook window
+        matched = (
+            (target_title and t == target_title)
+            or (not target_title and (t == 'MDLook' or t.endswith('— MDLook')))
+        )
+        if matched:
+            fg_hwnd = user32.GetForegroundWindow()
+            fg_tid = GetWindowThreadProcessId(fg_hwnd, None)
+            our_tid = GetCurrentThreadId()
+            AttachThreadInput(our_tid, fg_tid, True)
+            user32.ShowWindow(h, SW_RESTORE)
+            user32.SetForegroundWindow(h)
+            user32.BringWindowToTop(h)
+            AttachThreadInput(our_tid, fg_tid, False)
+            return False  # Stop enumeration — target window found
+        return True
+
+    try:
+        EnumWindows(WNDENUMPROC(callback), 0)
+    except Exception:
+        pass
+
+
 # ── Single-instance IPC ──
 SILENT_MODE = '--silent' in sys.argv
 IPC_PORT = 52845
@@ -150,7 +212,20 @@ def _start_ipc_listener():
                 if data.startswith('OPEN:'):
                     filepath = data[5:]
                     if os.path.isfile(filepath):
-                        _create_window(filepath)
+                        norm = os.path.normcase(filepath)
+                        existing = None
+                        with _windows_lock:
+                            for entry in _windows:
+                                cp = entry['api'].current_path
+                                if cp and os.path.normcase(cp) == norm:
+                                    existing = entry
+                                    break
+                        if existing is not None:
+                            # File already open — activate the existing window
+                            _force_foreground_window(existing['window'])
+                        else:
+                            # New file — open and bring to front after load
+                            _create_window(filepath)
                 elif data == 'SHOW':
                     _force_foreground()
             except socket.timeout:
@@ -452,6 +527,205 @@ BRIDGE_JS = """
         setMode('read');
       });
     });
+
+    // ── In-page search (Ctrl+F) ──
+    (function(){
+      var bar = null, input = null, counter = null, matches = [], matchIdx = -1;
+      var MARK_CLASS = 'mdlook-search-hl';
+      var MARK_CUR   = 'mdlook-search-cur';
+
+      function createBar(){
+        if(bar) return;
+        bar = document.createElement('div');
+        bar.id = 'mdlook-search-bar';
+        bar.style.cssText = [
+          'position:fixed','top:8px','right:16px','z-index:99999',
+          'display:flex','align-items:center','gap:6px',
+          'background:var(--bg,#fff)','border:1px solid var(--border,#ccc)',
+          'border-radius:6px','padding:5px 8px',
+          'box-shadow:0 2px 10px rgba(0,0,0,.18)',
+          'font-family:Inter,system-ui,sans-serif','font-size:13px'
+        ].join(';');
+
+        input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = 'Search…';
+        input.style.cssText = 'border:none;outline:none;width:180px;background:transparent;color:inherit;font-size:13px;';
+
+        counter = document.createElement('span');
+        counter.style.cssText = 'min-width:56px;color:#888;font-size:12px;white-space:nowrap;';
+        counter.textContent = '';
+
+        var btnPrev = document.createElement('button');
+        btnPrev.innerHTML = '&#x25B2;';
+        btnPrev.title = 'Previous (Shift+Enter)';
+        btnPrev.style.cssText = 'border:none;background:none;cursor:pointer;padding:0 3px;font-size:13px;';
+
+        var btnNext = document.createElement('button');
+        btnNext.innerHTML = '&#x25BC;';
+        btnNext.title = 'Next (Enter)';
+        btnNext.style.cssText = 'border:none;background:none;cursor:pointer;padding:0 3px;font-size:13px;';
+
+        var btnClose = document.createElement('button');
+        btnClose.innerHTML = '\\u00D7';
+        btnClose.title = 'Close (Esc)';
+        btnClose.style.cssText = 'border:none;background:none;cursor:pointer;padding:0 3px;font-size:16px;line-height:1;';
+
+        bar.appendChild(input);
+        bar.appendChild(counter);
+        bar.appendChild(btnPrev);
+        bar.appendChild(btnNext);
+        bar.appendChild(btnClose);
+        document.body.appendChild(bar);
+
+        // Style for highlights (injected once)
+        if(!document.getElementById('mdlook-search-style')){
+          var st = document.createElement('style');
+          st.id = 'mdlook-search-style';
+          st.textContent = [
+            '.' + MARK_CLASS + '{background:#ffe066;color:inherit;border-radius:2px;}',
+            '.' + MARK_CUR   + '{background:#ff9800!important;color:#fff!important;}'
+          ].join('\\n');
+          document.head.appendChild(st);
+        }
+
+        input.addEventListener('input', function(){ doSearch(input.value); });
+        input.addEventListener('keydown', function(e){
+          if(e.key === 'Enter'){
+            e.preventDefault();
+            if(e.shiftKey) navigatePrev(); else navigateNext();
+          } else if(e.key === 'Escape'){
+            closeSearch();
+          }
+        });
+        btnPrev.addEventListener('click', navigatePrev);
+        btnNext.addEventListener('click', navigateNext);
+        btnClose.addEventListener('click', closeSearch);
+      }
+
+      function getSearchRoot(){
+        // Search inside .reader if visible, else document.body
+        var reader = document.querySelector('.reader');
+        return (reader && reader.offsetParent !== null) ? reader : document.body;
+      }
+
+      function clearHighlights(){
+        var marks = document.querySelectorAll('.' + MARK_CLASS);
+        marks.forEach(function(m){
+          var parent = m.parentNode;
+          if(!parent) return;
+          parent.replaceChild(document.createTextNode(m.textContent), m);
+          parent.normalize();
+        });
+        matches = [];
+        matchIdx = -1;
+      }
+
+      function doSearch(q){
+        clearHighlights();
+        if(!q){ counter.textContent = ''; return; }
+
+        var root = getSearchRoot();
+        var lq = q.toLowerCase();
+
+        // Walk text nodes
+        var walker = document.createTreeWalker(
+          root,
+          NodeFilter.SHOW_TEXT,
+          {
+            acceptNode: function(node){
+              var p = node.parentNode;
+              if(!p) return NodeFilter.FILTER_REJECT;
+              // Skip script/style/search bar itself
+              var tag = p.tagName ? p.tagName.toLowerCase() : '';
+              if(tag === 'script' || tag === 'style') return NodeFilter.FILTER_REJECT;
+              if(p.closest && p.closest('#mdlook-search-bar')) return NodeFilter.FILTER_REJECT;
+              if(node.textContent.toLowerCase().indexOf(lq) === -1) return NodeFilter.FILTER_SKIP;
+              return NodeFilter.FILTER_ACCEPT;
+            }
+          }
+        );
+
+        var nodes = [];
+        var n;
+        while((n = walker.nextNode())) nodes.push(n);
+
+        nodes.forEach(function(textNode){
+          var text = textNode.textContent;
+          var lt = text.toLowerCase();
+          var parent = textNode.parentNode;
+          if(!parent) return;
+          var frag = document.createDocumentFragment();
+          var last = 0, idx;
+          while((idx = lt.indexOf(lq, last)) !== -1){
+            if(idx > last) frag.appendChild(document.createTextNode(text.slice(last, idx)));
+            var mark = document.createElement('mark');
+            mark.className = MARK_CLASS;
+            mark.textContent = text.slice(idx, idx + q.length);
+            frag.appendChild(mark);
+            matches.push(mark);
+            last = idx + q.length;
+          }
+          if(last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+          parent.replaceChild(frag, textNode);
+        });
+
+        if(matches.length > 0){
+          matchIdx = 0;
+          highlightCurrent();
+        }
+        updateCounter();
+      }
+
+      function highlightCurrent(){
+        matches.forEach(function(m){ m.classList.remove(MARK_CUR); });
+        if(matchIdx >= 0 && matchIdx < matches.length){
+          matches[matchIdx].classList.add(MARK_CUR);
+          matches[matchIdx].scrollIntoView({block:'nearest', behavior:'smooth'});
+        }
+        updateCounter();
+      }
+
+      function navigateNext(){
+        if(!matches.length) return;
+        matchIdx = (matchIdx + 1) % matches.length;
+        highlightCurrent();
+      }
+
+      function navigatePrev(){
+        if(!matches.length) return;
+        matchIdx = (matchIdx - 1 + matches.length) % matches.length;
+        highlightCurrent();
+      }
+
+      function updateCounter(){
+        if(!matches.length){ counter.textContent = input && input.value ? 'No results' : ''; return; }
+        counter.textContent = (matchIdx + 1) + ' / ' + matches.length;
+      }
+
+      function openSearch(){
+        createBar();
+        bar.style.display = 'flex';
+        input.focus();
+        input.select();
+        if(input.value) doSearch(input.value);
+      }
+
+      function closeSearch(){
+        clearHighlights();
+        if(bar) bar.style.display = 'none';
+        if(counter) counter.textContent = '';
+      }
+
+      // Intercept Ctrl+F — suppress native WebView2 find bar, show ours instead
+      document.addEventListener('keydown', function(e){
+        if((e.ctrlKey || e.metaKey) && e.key === 'f'){
+          e.preventDefault();
+          e.stopPropagation();
+          openSearch();
+        }
+      }, true);
+    })();
   }
 
   if(window.pywebview && window.pywebview.api) initBridge();
