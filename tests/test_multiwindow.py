@@ -380,6 +380,31 @@ class TestBuildHtml:
         assert "setMode('read');\n}\n</script>" in content
         assert "setMode('edit');\n}\n</script>" not in content
 
+    def test_bridge_js_injected_into_html(self, patch_template):
+        """build_html injects BRIDGE_JS into the output HTML before </body>."""
+        path = app.build_html('# Test', 'doc.md', '/dir')
+        with open(path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        # BRIDGE_JS must be present
+        assert 'initBridge' in content
+        # The in-page search bar code (T-02) must be present
+        assert 'mdlook-search-bar' in content
+        assert 'Ctrl+F' in content or "e.key === 'f'" in content
+
+    def test_bridge_js_search_intercepts_ctrl_f_marker(self, patch_template):
+        """BRIDGE_JS contains capture-phase Ctrl+F keydown listener for in-page search."""
+        # Verify the exact event listener registration pattern used to suppress native find bar
+        assert "document.addEventListener('keydown'" in app.BRIDGE_JS
+        assert "e.key === 'f'" in app.BRIDGE_JS
+        assert 'true' in app.BRIDGE_JS  # capture: true (third argument)
+
+    def test_bridge_js_search_bar_navigation(self, patch_template):
+        """BRIDGE_JS implements Enter/Shift+Enter/Escape navigation for search bar."""
+        assert 'navigateNext' in app.BRIDGE_JS
+        assert 'navigatePrev' in app.BRIDGE_JS
+        assert "e.key === 'Enter'" in app.BRIDGE_JS
+        assert "e.key === 'Escape'" in app.BRIDGE_JS
+
 
 # ===========================================================================
 # Group 4 — Api isolation
@@ -795,3 +820,85 @@ class TestWindowDeduplication:
 
         m_create.assert_called_once_with(filepath)
         m_fg.assert_not_called()
+
+    def test_open_window_with_none_current_path_creates_new_window(self, tmp_path):
+        """OPEN: entry with current_path=None is skipped; new window is created."""
+        md_file = tmp_path / 'target.md'
+        md_file.write_text('# Target', encoding='utf-8')
+        filepath = str(md_file)
+
+        # A window with no file open yet (current_path is None)
+        mock_api = MagicMock()
+        mock_api.current_path = None
+        fake_entry = {'window': MagicMock(), 'api': mock_api, 'temp_html': None}
+
+        port = self._free_port()
+        create_called = threading.Event()
+
+        def mock_create(path):
+            create_called.set()
+
+        with patch.object(app, 'IPC_PORT', port), \
+             patch.object(app, '_force_foreground_window', MagicMock()) as m_fg, \
+             patch.object(app, '_create_window', side_effect=mock_create) as m_create, \
+             patch.object(app, '_quitting', False):
+            with app._windows_lock:
+                app._windows.append(fake_entry)
+
+            app._start_ipc_listener()
+            self._wait_for_listener(port)
+
+            s = socket.socket()
+            s.connect(('127.0.0.1', port))
+            s.sendall(('OPEN:' + filepath).encode('utf-8'))
+            s.close()
+
+            assert create_called.wait(timeout=5), '_create_window not called when existing entry has current_path=None'
+
+        m_create.assert_called_once_with(filepath)
+        m_fg.assert_not_called()
+
+    def test_open_matches_second_window_not_first(self, tmp_path):
+        """OPEN: deduplication finds the matching window even if it is not the first entry."""
+        md_file = tmp_path / 'second.md'
+        md_file.write_text('# Second', encoding='utf-8')
+        filepath = str(md_file)
+
+        # First window has a different file
+        other_file = tmp_path / 'other.md'
+        other_file.write_text('# Other', encoding='utf-8')
+        mock_api_first = MagicMock()
+        mock_api_first.current_path = str(other_file)
+        first_entry = {'window': MagicMock(name='Win1'), 'api': mock_api_first, 'temp_html': None}
+
+        # Second window has the target file
+        mock_window_second = MagicMock(name='Win2')
+        mock_api_second = MagicMock()
+        mock_api_second.current_path = filepath
+        second_entry = {'window': mock_window_second, 'api': mock_api_second, 'temp_html': None}
+
+        port = self._free_port()
+        fg_called = threading.Event()
+
+        def mock_fg_window(w):
+            fg_called.set()
+
+        with patch.object(app, 'IPC_PORT', port), \
+             patch.object(app, '_force_foreground_window', side_effect=mock_fg_window) as m_fg, \
+             patch.object(app, '_create_window', MagicMock()) as m_create, \
+             patch.object(app, '_quitting', False):
+            with app._windows_lock:
+                app._windows.extend([first_entry, second_entry])
+
+            app._start_ipc_listener()
+            self._wait_for_listener(port)
+
+            s = socket.socket()
+            s.connect(('127.0.0.1', port))
+            s.sendall(('OPEN:' + filepath).encode('utf-8'))
+            s.close()
+
+            assert fg_called.wait(timeout=5), '_force_foreground_window not called for second entry match'
+
+        m_fg.assert_called_once_with(mock_window_second)
+        m_create.assert_not_called()
