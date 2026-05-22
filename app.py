@@ -119,6 +119,11 @@ def _force_foreground_window(window):
     except Exception:
         target_title = None
 
+    # Without a title we cannot reliably identify the HWND —
+    # skip Win32 SetForegroundWindow to avoid raising a random MDLook window
+    if not target_title:
+        return
+
     user32 = ctypes.windll.user32
     SW_RESTORE = 9
 
@@ -136,13 +141,7 @@ def _force_foreground_window(window):
     def callback(h, _):
         title_buf = ctypes.create_unicode_buffer(512)
         user32.GetWindowTextW(h, title_buf, 512)
-        t = title_buf.value
-        # Match by exact title if we have it, otherwise match any MDLook window
-        matched = (
-            (target_title and t == target_title)
-            or (not target_title and (t == 'MDLook' or t.endswith('— MDLook')))
-        )
-        if matched:
+        if title_buf.value == target_title:
             fg_hwnd = user32.GetForegroundWindow()
             fg_tid = GetWindowThreadProcessId(fg_hwnd, None)
             our_tid = GetCurrentThreadId()
@@ -222,7 +221,12 @@ def _start_ipc_listener():
                                     break
                         if existing is not None:
                             # File already open — activate the existing window
-                            _force_foreground_window(existing['window'])
+                            # Run in a separate thread to avoid blocking the IPC listener
+                            threading.Thread(
+                                target=_force_foreground_window,
+                                args=(existing['window'],),
+                                daemon=True,
+                            ).start()
                         else:
                             # New file — open and bring to front after load
                             _create_window(filepath)
@@ -459,6 +463,7 @@ BRIDGE_JS = """
         var ed = document.querySelector('#editor');
         if(ed) ed.value = rawMd;
         clearAutoSave();
+        if(window._mdlookResetSearch) window._mdlookResetSearch();
         setMode('read');
       }).catch(function(err){ alert('Open failed: ' + err); });
     });
@@ -507,6 +512,7 @@ BRIDGE_JS = """
       document.body.classList.remove('unsaved');
       document.querySelector('#fn').textContent = res.name;
       document.title = res.name + ' \\u2014 MDLook';
+      if(window._mdlookResetSearch) window._mdlookResetSearch();
       setMode('read');
     });
 
@@ -524,6 +530,7 @@ BRIDGE_JS = """
         if(ed) ed.value = rawMd;
         document.querySelector('#fn').textContent = res.name;
         document.title = res.name + ' \\u2014 MDLook';
+        if(window._mdlookResetSearch) window._mdlookResetSearch();
         setMode('read');
       });
     });
@@ -713,9 +720,15 @@ BRIDGE_JS = """
 
       function closeSearch(){
         clearHighlights();
+        if(input) input.value = '';
         if(bar) bar.style.display = 'none';
         if(counter) counter.textContent = '';
       }
+
+      // Expose reset so Open/Refresh/Reload handlers can invalidate stale matches
+      window._mdlookResetSearch = function(){
+        closeSearch();
+      };
 
       // Intercept Ctrl+F — suppress native WebView2 find bar, show ours instead
       document.addEventListener('keydown', function(e){
