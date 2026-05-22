@@ -611,9 +611,8 @@ BRIDGE_JS = """
       }
 
       function getSearchRoot(){
-        // Search inside .reader if visible, else document.body
         var reader = document.querySelector('.reader');
-        return (reader && reader.offsetParent !== null) ? reader : document.body;
+        return (reader && reader.offsetHeight > 0) ? reader : document.body;
       }
 
       function clearHighlights(){
@@ -732,7 +731,7 @@ BRIDGE_JS = """
 
       // Intercept Ctrl+F — suppress native WebView2 find bar, show ours instead
       document.addEventListener('keydown', function(e){
-        if((e.ctrlKey || e.metaKey) && e.key === 'f'){
+        if((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.code === 'KeyF')){
           e.preventDefault();
           e.stopPropagation();
           openSearch();
