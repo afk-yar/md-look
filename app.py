@@ -730,11 +730,22 @@ BRIDGE_JS = """
       };
 
       // Intercept Ctrl+F — suppress native WebView2 find bar, show ours instead
+      // F3 / Shift+F3 — navigate matches or open search
       document.addEventListener('keydown', function(e){
         if((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.code === 'KeyF')){
           e.preventDefault();
           e.stopPropagation();
           openSearch();
+          return;
+        }
+        if(e.key === 'F3'){
+          e.preventDefault();
+          e.stopPropagation();
+          if(bar && bar.style.display !== 'none' && matches.length > 0){
+            if(e.shiftKey) navigatePrev(); else navigateNext();
+          } else {
+            openSearch();
+          }
         }
       }, true);
     })();
@@ -1035,6 +1046,7 @@ def _create_window(filepath=None):
         width=960,
         height=720,
         min_size=(600, 400),
+        text_select=True,
     )
     api_inst._window = window
 
@@ -1127,6 +1139,7 @@ def main():
         width=960,
         height=720,
         min_size=(600, 400),
+        text_select=True,
         minimized=SILENT_MODE,
         hidden=SILENT_MODE,
     )
