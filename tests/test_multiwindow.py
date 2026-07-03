@@ -28,6 +28,27 @@ import app
 class TestIpcProtocol:
     """Test IPC listener and signalling without mocking GUI."""
 
+    def test_ipc_port_is_scoped_by_executable_identity(self):
+        """Installed and portable/dev copies must not steal each other's launches."""
+        installed = r'C:\Program Files\MDLook\MDLook.exe'
+        portable = r'E:\projects\md-look\dist\MDLook\MDLook.exe'
+
+        installed_port = app._derive_ipc_port(installed)
+        portable_port = app._derive_ipc_port(portable)
+
+        assert installed_port == app._derive_ipc_port(installed)
+        assert app.IPC_PORT_BASE <= installed_port < app.IPC_PORT_BASE + app.IPC_PORT_SPAN
+        assert app.IPC_PORT_BASE <= portable_port < app.IPC_PORT_BASE + app.IPC_PORT_SPAN
+        assert installed_port != portable_port
+
+    def test_frozen_instance_identity_uses_executable_path(self):
+        """PyInstaller builds are scoped by MDLook.exe, not by _internal app.py."""
+        exe = r'E:\portable\MDLook\MDLook.exe'
+
+        with patch.object(sys, 'frozen', True, create=True), \
+             patch.object(sys, 'executable', exe):
+            assert app._instance_identity() == os.path.abspath(exe)
+
     def _free_port(self):
         """Find a free localhost port."""
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -76,6 +97,36 @@ class TestIpcProtocol:
 
         m_create.assert_called_once_with(filepath)
         m_fg.assert_not_called()
+
+    def test_open_message_with_target_calls_create_window_with_target(self, tmp_path):
+        """OPEN:/path/to/file.md<TAB>T-09 -> _create_window(path, target)."""
+        md_file = tmp_path / 'file.md'
+        md_file.write_text('# Hello\n\n- T-09 task', encoding='utf-8')
+        filepath = str(md_file)
+
+        port = self._free_port()
+        event = threading.Event()
+
+        def mock_create(path, target=None):
+            event.set()
+            return MagicMock()
+
+        with patch.object(app, 'IPC_PORT', port), \
+             patch.object(app, '_create_window', side_effect=mock_create) as m_create, \
+             patch.object(app, '_activate_window_async', MagicMock()) as m_activate, \
+             patch.object(app, '_quitting', False):
+            app._start_ipc_listener()
+            self._wait_for_listener(port)
+
+            s = socket.socket()
+            s.connect(('127.0.0.1', port))
+            s.sendall(('OPEN:' + filepath + '\tT-09').encode('utf-8'))
+            s.close()
+
+            assert event.wait(timeout=5), "_create_window was not called within 5s"
+
+        m_create.assert_called_once_with(filepath, 'T-09')
+        m_activate.assert_called_once()
 
     def test_show_message_calls_force_foreground(self):
         """SHOW → _force_foreground called."""
@@ -151,6 +202,39 @@ class TestIpcProtocol:
 
         assert result is True
 
+    def test_signal_existing_instance_sends_target_in_open_message(self, tmp_path):
+        """Second launch sends OPEN:path<TAB>target when --goto is present."""
+        md_file = tmp_path / 'dash.md'
+        md_file.write_text('# Dash\n\n- T-09 task', encoding='utf-8')
+        filepath = str(md_file.resolve())
+
+        port = self._free_port()
+        ready = threading.Event()
+        done = threading.Event()
+        received = []
+
+        def server():
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as srv:
+                srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                srv.bind(('127.0.0.1', port))
+                srv.listen(1)
+                ready.set()
+                conn, _ = srv.accept()
+                with conn:
+                    received.append(conn.recv(8192).decode('utf-8'))
+                done.set()
+
+        threading.Thread(target=server, daemon=True).start()
+        assert ready.wait(timeout=5), "Test listener did not start"
+
+        with patch.object(app, 'IPC_PORT', port), \
+             patch.object(sys, 'argv', ['app.py', str(md_file), '--goto', 'T-09']):
+            result = app._signal_existing_instance()
+
+        assert result is True
+        assert done.wait(timeout=5), "Test listener did not receive IPC message"
+        assert received == ['OPEN:' + filepath + '\tT-09']
+
     def test_signal_existing_instance_returns_false_when_no_listener(self):
         """_signal_existing_instance() → False when nothing is listening."""
         port = self._free_port()
@@ -194,6 +278,47 @@ class TestIpcProtocol:
             assert event.wait(timeout=5), "Listener didn't process follow-up SHOW"
 
         m_create.assert_not_called()
+
+
+# ===========================================================================
+# Group 1b — External goto scheduling
+# ===========================================================================
+
+class TestExternalGoto:
+    """Test external target scroll scheduling against webview load events."""
+
+    def test_goto_waits_for_loaded_event(self):
+        """_goto_target_async defers JS evaluation until window.events.loaded fires."""
+        calls = []
+
+        class LoadedEvent:
+            def __init__(self):
+                self.handlers = []
+
+            def is_set(self):
+                return False
+
+            def __iadd__(self, handler):
+                self.handlers.append(handler)
+                return self
+
+            def __isub__(self, handler):
+                self.handlers.remove(handler)
+                return self
+
+        loaded = LoadedEvent()
+        window = MagicMock()
+        window.events.loaded = loaded
+
+        with patch.object(app, '_evaluate_goto_target_async', side_effect=lambda w, t, delay=0.1: calls.append((w, t, delay))):
+            app._goto_target_async(window, 'T-09', delay=0.2)
+            assert calls == []
+            assert len(loaded.handlers) == 1
+
+            loaded.handlers[0]()
+
+        assert calls == [(window, 'T-09', 0.2)]
+        assert loaded.handlers == []
 
 
 # ===========================================================================
@@ -405,6 +530,14 @@ class TestBuildHtml:
         assert "e.key === 'Enter'" in app.BRIDGE_JS
         assert "e.key === 'Escape'" in app.BRIDGE_JS
 
+    def test_bridge_js_external_goto_target(self, patch_template):
+        """BRIDGE_JS exposes external goto with anchor-first and text fallback."""
+        assert 'window.mdlookGotoTarget' in app.BRIDGE_JS
+        assert 'document.getElementById(target)' in app.BRIDGE_JS
+        assert 'document.getElementById(lower)' in app.BRIDGE_JS
+        assert 'mdlookFindTextTarget' in app.BRIDGE_JS
+        assert 'document.createTreeWalker' in app.BRIDGE_JS
+
 
 # ===========================================================================
 # Group 4 — Api isolation
@@ -509,6 +642,30 @@ class TestGetFileArg:
             result = app._get_file_arg()
 
         assert result == str(md.resolve())
+
+    def test_argv_with_goto_flag_and_file(self, tmp_path):
+        """argv=[app.py, --goto, T-09, file.md] -> skips goto value, returns file."""
+        md = tmp_path / 'goto.md'
+        md.write_text('# Goto', encoding='utf-8')
+
+        with patch.object(sys, 'argv', ['app.py', '--goto', 'T-09', str(md)]):
+            result = app._get_file_arg()
+
+        assert result == str(md.resolve())
+
+    def test_get_goto_arg_space_form(self):
+        """argv=[app.py, file.md, --goto, T-09] -> returns T-09."""
+        with patch.object(sys, 'argv', ['app.py', 'file.md', '--goto', 'T-09']):
+            result = app._get_goto_arg()
+
+        assert result == 'T-09'
+
+    def test_get_goto_arg_equals_form(self):
+        """argv=[app.py, file.md, --goto=T-09] -> returns T-09."""
+        with patch.object(sys, 'argv', ['app.py', 'file.md', '--goto=T-09']):
+            result = app._get_goto_arg()
+
+        assert result == 'T-09'
 
     def test_argv_silent_only_returns_none(self):
         """argv=[app.py, --silent] → returns None."""
@@ -674,7 +831,7 @@ class TestWindowDeduplication:
         raise RuntimeError(f"Listener on port {port} didn't start within {timeout}s")
 
     def test_open_existing_file_activates_existing_window(self, tmp_path):
-        """OPEN: for an already-open file calls _force_foreground_window, not _create_window."""
+        """OPEN: for an already-open file activates it, not creates another window."""
         md_file = tmp_path / 'dup.md'
         md_file.write_text('# Dup', encoding='utf-8')
         filepath = str(md_file)
@@ -686,18 +843,14 @@ class TestWindowDeduplication:
         fake_entry = {'window': mock_window, 'api': mock_api, 'temp_html': None}
 
         port = self._free_port()
-        fg_called = threading.Event()
-        create_called = threading.Event()
+        activate_called = threading.Event()
 
-        def mock_fg_window(w):
-            fg_called.set()
-
-        def mock_create(path):
-            create_called.set()
+        def mock_activate(w, delay=0.15):
+            activate_called.set()
 
         with patch.object(app, 'IPC_PORT', port), \
-             patch.object(app, '_force_foreground_window', side_effect=mock_fg_window) as m_fg, \
-             patch.object(app, '_create_window', side_effect=mock_create) as m_create, \
+             patch.object(app, '_activate_window_async', side_effect=mock_activate) as m_activate, \
+             patch.object(app, '_create_window', MagicMock()) as m_create, \
              patch.object(app, '_quitting', False):
             with app._windows_lock:
                 app._windows.append(fake_entry)
@@ -710,9 +863,48 @@ class TestWindowDeduplication:
             s.sendall(('OPEN:' + filepath).encode('utf-8'))
             s.close()
 
-            assert fg_called.wait(timeout=5), '_force_foreground_window not called'
+            assert activate_called.wait(timeout=5), '_activate_window_async not called'
 
-        m_fg.assert_called_once_with(mock_window)
+        m_activate.assert_called_once_with(mock_window, delay=0.05)
+        m_create.assert_not_called()
+
+    def test_open_existing_file_with_target_scrolls_existing_window(self, tmp_path):
+        """OPEN: for an already-open file with target activates and scrolls that window."""
+        md_file = tmp_path / 'dup.md'
+        md_file.write_text('# Dup\n\n- T-09 task', encoding='utf-8')
+        filepath = str(md_file)
+
+        mock_window = MagicMock(name='ExistingWindow')
+        mock_api = MagicMock()
+        mock_api.current_path = filepath
+        fake_entry = {'window': mock_window, 'api': mock_api, 'temp_html': None}
+
+        port = self._free_port()
+        goto_called = threading.Event()
+
+        def mock_goto(w, target, delay=0.35):
+            goto_called.set()
+
+        with patch.object(app, 'IPC_PORT', port), \
+             patch.object(app, '_activate_window_async', MagicMock()) as m_activate, \
+             patch.object(app, '_goto_target_async', side_effect=mock_goto) as m_goto, \
+             patch.object(app, '_create_window', MagicMock()) as m_create, \
+             patch.object(app, '_quitting', False):
+            with app._windows_lock:
+                app._windows.append(fake_entry)
+
+            app._start_ipc_listener()
+            self._wait_for_listener(port)
+
+            s = socket.socket()
+            s.connect(('127.0.0.1', port))
+            s.sendall(('OPEN:' + filepath + '\tT-09').encode('utf-8'))
+            s.close()
+
+            assert goto_called.wait(timeout=5), '_goto_target_async not called'
+
+        m_activate.assert_called_once_with(mock_window, delay=0.05)
+        m_goto.assert_called_once_with(mock_window, 'T-09', delay=0.2)
         m_create.assert_not_called()
 
     def test_open_new_file_creates_window(self, tmp_path):
@@ -730,12 +922,18 @@ class TestWindowDeduplication:
 
         port = self._free_port()
         create_called = threading.Event()
+        activate_called = threading.Event()
+        created_window = MagicMock(name='NewWindow')
 
         def mock_create(path):
             create_called.set()
+            return created_window
+
+        def mock_activate(w, delay=0.15):
+            activate_called.set()
 
         with patch.object(app, 'IPC_PORT', port), \
-             patch.object(app, '_force_foreground_window', MagicMock()) as m_fg, \
+             patch.object(app, '_activate_window_async', side_effect=mock_activate) as m_activate, \
              patch.object(app, '_create_window', side_effect=mock_create) as m_create, \
              patch.object(app, '_quitting', False):
             with app._windows_lock:
@@ -750,9 +948,10 @@ class TestWindowDeduplication:
             s.close()
 
             assert create_called.wait(timeout=5), '_create_window not called'
+            assert activate_called.wait(timeout=5), '_activate_window_async not called'
 
         m_create.assert_called_once_with(filepath)
-        m_fg.assert_not_called()
+        m_activate.assert_called_once_with(created_window)
 
     def test_open_existing_file_case_insensitive(self, tmp_path):
         """OPEN: deduplication is case-insensitive (normcase comparison)."""
@@ -766,13 +965,13 @@ class TestWindowDeduplication:
         fake_entry = {'window': mock_window, 'api': mock_api, 'temp_html': None}
 
         port = self._free_port()
-        fg_called = threading.Event()
+        activate_called = threading.Event()
 
-        def mock_fg_window(w):
-            fg_called.set()
+        def mock_activate(w, delay=0.15):
+            activate_called.set()
 
         with patch.object(app, 'IPC_PORT', port), \
-             patch.object(app, '_force_foreground_window', side_effect=mock_fg_window) as m_fg, \
+             patch.object(app, '_activate_window_async', side_effect=mock_activate) as m_activate, \
              patch.object(app, '_create_window', MagicMock()) as m_create, \
              patch.object(app, '_quitting', False):
             with app._windows_lock:
@@ -786,9 +985,9 @@ class TestWindowDeduplication:
             s.sendall(('OPEN:' + filepath_lower).encode('utf-8'))
             s.close()
 
-            assert fg_called.wait(timeout=5), 'Case-insensitive dedup did not activate existing window'
+            assert activate_called.wait(timeout=5), 'Case-insensitive dedup did not activate existing window'
 
-        m_fg.assert_called_once_with(mock_window)
+        m_activate.assert_called_once_with(mock_window, delay=0.05)
         m_create.assert_not_called()
 
     def test_open_no_windows_creates_window(self, tmp_path):
@@ -799,12 +998,18 @@ class TestWindowDeduplication:
 
         port = self._free_port()
         create_called = threading.Event()
+        activate_called = threading.Event()
+        created_window = MagicMock(name='FreshWindow')
 
         def mock_create(path):
             create_called.set()
+            return created_window
+
+        def mock_activate(w, delay=0.15):
+            activate_called.set()
 
         with patch.object(app, 'IPC_PORT', port), \
-             patch.object(app, '_force_foreground_window', MagicMock()) as m_fg, \
+             patch.object(app, '_activate_window_async', side_effect=mock_activate) as m_activate, \
              patch.object(app, '_create_window', side_effect=mock_create) as m_create, \
              patch.object(app, '_quitting', False):
             # _windows is empty (reset by autouse fixture)
@@ -817,9 +1022,10 @@ class TestWindowDeduplication:
             s.close()
 
             assert create_called.wait(timeout=5), '_create_window not called for empty _windows'
+            assert activate_called.wait(timeout=5), '_activate_window_async not called'
 
         m_create.assert_called_once_with(filepath)
-        m_fg.assert_not_called()
+        m_activate.assert_called_once_with(created_window)
 
     def test_open_window_with_none_current_path_creates_new_window(self, tmp_path):
         """OPEN: entry with current_path=None is skipped; new window is created."""
@@ -834,12 +1040,18 @@ class TestWindowDeduplication:
 
         port = self._free_port()
         create_called = threading.Event()
+        activate_called = threading.Event()
+        created_window = MagicMock(name='TargetWindow')
 
         def mock_create(path):
             create_called.set()
+            return created_window
+
+        def mock_activate(w, delay=0.15):
+            activate_called.set()
 
         with patch.object(app, 'IPC_PORT', port), \
-             patch.object(app, '_force_foreground_window', MagicMock()) as m_fg, \
+             patch.object(app, '_activate_window_async', side_effect=mock_activate) as m_activate, \
              patch.object(app, '_create_window', side_effect=mock_create) as m_create, \
              patch.object(app, '_quitting', False):
             with app._windows_lock:
@@ -854,9 +1066,10 @@ class TestWindowDeduplication:
             s.close()
 
             assert create_called.wait(timeout=5), '_create_window not called when existing entry has current_path=None'
+            assert activate_called.wait(timeout=5), '_activate_window_async not called'
 
         m_create.assert_called_once_with(filepath)
-        m_fg.assert_not_called()
+        m_activate.assert_called_once_with(created_window)
 
     def test_open_matches_second_window_not_first(self, tmp_path):
         """OPEN: deduplication finds the matching window even if it is not the first entry."""
@@ -878,13 +1091,13 @@ class TestWindowDeduplication:
         second_entry = {'window': mock_window_second, 'api': mock_api_second, 'temp_html': None}
 
         port = self._free_port()
-        fg_called = threading.Event()
+        activate_called = threading.Event()
 
-        def mock_fg_window(w):
-            fg_called.set()
+        def mock_activate(w, delay=0.15):
+            activate_called.set()
 
         with patch.object(app, 'IPC_PORT', port), \
-             patch.object(app, '_force_foreground_window', side_effect=mock_fg_window) as m_fg, \
+             patch.object(app, '_activate_window_async', side_effect=mock_activate) as m_activate, \
              patch.object(app, '_create_window', MagicMock()) as m_create, \
              patch.object(app, '_quitting', False):
             with app._windows_lock:
@@ -898,7 +1111,7 @@ class TestWindowDeduplication:
             s.sendall(('OPEN:' + filepath).encode('utf-8'))
             s.close()
 
-            assert fg_called.wait(timeout=5), '_force_foreground_window not called for second entry match'
+            assert activate_called.wait(timeout=5), '_activate_window_async not called for second entry match'
 
-        m_fg.assert_called_once_with(mock_window_second)
+        m_activate.assert_called_once_with(mock_window_second, delay=0.05)
         m_create.assert_not_called()

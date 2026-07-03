@@ -2466,7 +2466,7 @@ body.zen .collapse-btns{display:none!important}
 .md-section-head h1,.md-section-head h2,.md-section-head h3,.md-section-head h4,.md-section-head h5,.md-section-head h6{margin:0;flex:1}
 .md-section-count{font-size:.7rem;color:var(--tm);font-family:'JetBrains Mono',monospace;white-space:nowrap;opacity:0;transition:opacity .15s}
 .md-section.collapsed .md-section-count{opacity:1}
-@media print{.bar{display:none}.reader{position:static;overflow:visible}.reader-content{padding:0;max-width:100%}body{background:#fff}.editor-wrap{display:none!important}.outline-panel{display:none!important}.md-section{padding-left:0;border-left:none}.md-section-head::before{display:none}.md-section-line{display:none}.md-section-count{display:none}.md-section.collapsed>.md-section-body{display:block}}
+@media print{.bar{display:none}.reader{position:static;overflow:visible}.reader-content{padding:0;max-width:100%}body{background:#fff}.editor-wrap{display:none!important}.outline-panel,.folder-panel,.folder-panel-scrim{display:none!important}.md-section{padding-left:0;border-left:none}.md-section-head::before{display:none}.md-section-line{display:none}.md-section-count{display:none}.md-section.collapsed>.md-section-body{display:block}}
 
 .editor-container{display:flex;flex:1;overflow:hidden;position:relative}
 
@@ -2477,6 +2477,27 @@ body.zen .collapse-btns{display:none!important}
 .outline-panel{position:fixed;top:var(--bar-h);right:0;width:260px;height:calc(100vh - var(--bar-h));background:var(--s);border-left:1px solid var(--b);z-index:55;overflow-y:auto;padding:16px;transform:translateX(100%);transition:transform .25s ease;box-shadow:-4px 0 20px rgba(0,0,0,.06)}
 .outline-panel.open{transform:translateX(0)}
 .outline-panel h4{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--tm);margin-bottom:10px;font-family:'JetBrains Mono',monospace}
+.folder-panel-scrim{display:none;position:fixed;top:var(--bar-h);left:0;right:0;bottom:0;z-index:64;background:rgba(0,0,0,.08)}
+.folder-panel-scrim.open{display:block}
+.folder-panel{position:fixed;top:var(--bar-h);left:0;width:min(320px,calc(100vw - 48px));height:calc(100vh - var(--bar-h));background:var(--s);border-right:1px solid var(--b);z-index:65;display:flex;flex-direction:column;transform:translateX(-100%);transition:transform .22s ease;box-shadow:4px 0 24px rgba(0,0,0,.1)}
+.folder-panel.open{transform:translateX(0)}
+.folder-panel-head{padding:14px 14px 10px;border-bottom:1px solid var(--b)}
+.folder-panel-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.folder-panel-title h4{margin:0;font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--tm);font-family:'JetBrains Mono',monospace}
+.folder-panel-close{width:26px;height:26px;border:1px solid var(--b);border-radius:6px;background:transparent;color:var(--t2);cursor:pointer;font-size:1rem;line-height:1}
+.folder-panel-close:hover{border-color:var(--a);color:var(--a);background:var(--as)}
+.folder-panel-path{font-size:.72rem;color:var(--tm);font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:10px}
+.folder-file-filter{width:100%;height:32px;border:1px solid var(--b);border-radius:7px;background:var(--bg);color:var(--t);font:inherit;font-size:.82rem;padding:0 10px;outline:none}
+.folder-file-filter:focus{border-color:var(--a);box-shadow:0 0 0 2px var(--as)}
+.folder-file-list{padding:8px;overflow:auto;display:flex;flex-direction:column;gap:2px}
+.folder-file-item{width:100%;border:none;border-radius:6px;background:transparent;color:var(--t2);font:inherit;font-size:.82rem;text-align:left;padding:8px 9px;cursor:pointer;display:flex;align-items:center;gap:8px;min-height:34px}
+.folder-file-item:hover{background:var(--as);color:var(--a)}
+.folder-file-item.current{background:var(--as);color:var(--a);font-weight:600;cursor:default}
+.folder-file-item-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.folder-file-empty,.folder-file-error,.folder-file-loading{padding:16px;color:var(--tm);font-size:.82rem;line-height:1.5}
+.folder-file-error{color:#b4533b}
+body.zen #btnFolderNav{display:none}
+body.zen .folder-panel,body.zen .folder-panel-scrim{display:none}
 .outline-item{display:block;padding:4px 0;font-size:.86rem;color:var(--t2);text-decoration:none;cursor:pointer;transition:color .12s;border:none;background:none;text-align:left;width:100%;font-family:inherit;line-height:1.5}
 .outline-item:hover{color:var(--a)}
 .outline-item[data-level="2"]{padding-left:14px;font-size:.83rem}
@@ -2517,6 +2538,9 @@ body.zen .zen-exit.zen-exit-visible{opacity:1;transition:opacity .3s}
 .find-bar .find-close{border:none;font-size:1rem;padding:4px 6px;line-height:1}
 mark.find-hl{background:color-mix(in srgb,var(--a) 30%,transparent);border-radius:2px;padding:0;color:inherit}
 mark.find-hl.current{background:var(--a);color:#fff}
+#mdlook-editor-find-overlay{position:absolute;inset:0;z-index:5;pointer-events:none;overflow:hidden;white-space:pre-wrap;word-wrap:break-word;box-sizing:border-box;color:transparent;background:transparent}
+#mdlook-editor-find-overlay mark.find-hl{background:rgba(255,224,102,.65)!important;color:transparent!important}
+#mdlook-editor-find-overlay mark.find-hl.current{background:rgba(255,152,0,.9)!important;color:transparent!important}
 
 /* ── Drag overlay ── */
 .drag-overlay{display:none;position:absolute;inset:0;background:color-mix(in srgb,var(--a) 10%,transparent);border:2px dashed var(--a);border-radius:8px;z-index:10;align-items:center;justify-content:center;font-size:.9rem;font-weight:600;color:var(--a)}
@@ -2548,6 +2572,9 @@ mark.find-hl.current{background:var(--a);color:#fff}
     <input type="file" id="fileInput" accept=".md,.markdown,.txt" style="display:none">
     <button class="btn" id="btnOpen" data-tip="Open (Ctrl+O)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M5 19a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4l2 3h9a2 2 0 0 1 2 2v1"/><path d="M3 17l2.5-7h15.1a2 2 0 0 1 1.9 2.6L20.8 18a2 2 0 0 1-1.9 1.4H5"/></svg>
+    </button>
+    <button class="btn" id="btnFolderNav" data-tip="This folder" aria-controls="folderPanel" aria-expanded="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/><circle cx="6" cy="6" r="1" fill="currentColor" stroke="none"/><circle cx="6" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="6" cy="18" r="1" fill="currentColor" stroke="none"/></svg>
     </button>
     <div class="export-dropdown" id="exportDrop">
       <button class="btn" id="btnExport" data-tip="Export">
@@ -2880,6 +2907,18 @@ mark.find-hl.current{background:var(--a);color:#fff}
   <h4>Outline</h4>
   <div id="outlineList"></div>
 </div>
+<div class="folder-panel-scrim" id="folderPanelScrim"></div>
+<aside class="folder-panel" id="folderPanel" aria-label="Files in current folder">
+  <div class="folder-panel-head">
+    <div class="folder-panel-title">
+      <h4>This folder</h4>
+      <button class="folder-panel-close" id="folderPanelClose" type="button" aria-label="Close folder panel">&times;</button>
+    </div>
+    <div class="folder-panel-path" id="folderPanelPath"></div>
+    <input class="folder-file-filter" id="folderFileFilter" type="search" placeholder="Filter files..." autocomplete="off" spellcheck="false">
+  </div>
+  <div class="folder-file-list" id="folderFileList"></div>
+</aside>
 
 <!-- Zen exit indicator -->
 <div class="zen-exit" id="zenExit"><span class="zen-pill"><span id="zenExitText">Press <kbd style="background:rgba(255,255,255,.15);border:none;color:#fff;padding:1px 6px;border-radius:3px;font-size:.72rem">Esc</kbd> to exit Zen mode</span><span class="zen-width-toggle" id="zenWidthToggle"><svg id="zenWidthIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:middle"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></span></span></div>
@@ -2959,7 +2998,95 @@ mark.find-hl.current{background:var(--a);color:#fff}
 
 <script>
 const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
-let rawMd='',currentMode='read',hasUnsaved=false,fileName='';
+let rawMd='',currentMode='read',hasUnsaved=false,fileName='',filePath='';
+
+function readEmbeddedText(id){
+  const el=document.getElementById(id);
+  if(!el)return '';
+  const text=el.textContent.trim();
+  if(!text||text.includes('_PLACEHOLDER'))return '';
+  try{return JSON.parse(text)}
+  catch(e){return text.replace(/^"+/,'').replace(/"+$/,'')}
+}
+function joinFsPath(folder,name){
+  if(!folder||!name)return '';
+  const sep=folder.includes('\\')?'\\':'/';
+  return folder.replace(/[\\/]+$/,'')+sep+name;
+}
+function folderFromPath(path){return (path||'').replace(/[\\/][^\\/]*$/,'')}
+function encodeFilePathSegments(path){
+  return path.split('/').map(part=>encodeURIComponent(part)).join('/');
+}
+function encodeHashFragment(hash){
+  if(!hash)return '';
+  let value=hash.charAt(0)==='#'?hash.slice(1):hash;
+  try{value=decodeURIComponent(value)}catch(e){}
+  return '#'+encodeURIComponent(value);
+}
+function fsPathToFileUrl(path){
+  if(!path)return '';
+  let p=String(path).replace(/\\/g,'/');
+  let hash='';
+  const hashIdx=p.indexOf('#');
+  if(hashIdx>=0){hash=p.slice(hashIdx);p=p.slice(0,hashIdx)}
+  if(p.indexOf('//')===0){
+    const parts=p.slice(2).split('/');
+    const host=parts.shift()||'';
+    return 'file://'+encodeURIComponent(host)+'/'+encodeFilePathSegments(parts.join('/'))+encodeHashFragment(hash);
+  }
+  if(p.charAt(0)==='/'&&/^[A-Za-z]:\//.test(p.slice(1)))p=p.slice(1);
+  const drive=p.match(/^([A-Za-z]:)(\/.*)?$/);
+  if(drive)return 'file:///'+drive[1]+encodeFilePathSegments(drive[2]||'')+encodeHashFragment(hash);
+  if(p.charAt(0)==='/')return 'file://'+encodeFilePathSegments(p)+encodeHashFragment(hash);
+  return 'file:///'+encodeFilePathSegments(p)+encodeHashFragment(hash);
+}
+function resolveMdUrl(rawUrl,kind){
+  const raw=String(rawUrl||'').trim();
+  if(!raw)return '';
+  if(raw.charAt(0)==='#')return encodeHashFragment(raw);
+  if(raw.indexOf('//')===0)return raw;
+  if(/^[A-Za-z]:[\\/]/.test(raw)||raw.indexOf('\\\\')===0)return fsPathToFileUrl(raw);
+  const schemeMatch=raw.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):/);
+  const scheme=schemeMatch?schemeMatch[1].toLowerCase():'';
+  if(scheme==='http'||scheme==='https'||scheme==='mailto')return raw;
+  if(scheme==='data')return kind==='image'?raw:'#';
+  if(scheme==='file')return raw;
+  if(scheme)return '#';
+  if(raw.charAt(0)==='/'&&raw.charAt(1)!=='/')return raw;
+  const base=filePath?folderFromPath(filePath):readEmbeddedText('md-folder');
+  if(!base)return raw;
+  return fsPathToFileUrl(joinFsPath(base,raw));
+}
+window.mdlookResolveMdUrl=resolveMdUrl;
+function parentFolderForTitle(folder){
+  if(!folder)return '';
+  const normalized=folder.replace(/\//g,'\\');
+  const driveMatch=normalized.match(/^([A-Za-z]:)\\?(.*)$/);
+  const drive=driveMatch?driveMatch[1]:'';
+  const rest=driveMatch?driveMatch[2]:normalized;
+  const parts=rest.split('\\').filter(Boolean);
+  if(parts.length)return parts[parts.length-1];
+  return drive||folder;
+}
+window.mdlookTitleForFile=function(name,path,dirty){
+  name=name||'';
+  if(!name)return 'MDLook';
+  const folder=path?folderFromPath(path):'';
+  const parent=parentFolderForTitle(folder);
+  const core=parent?name+' — '+parent:name;
+  return (dirty?'\u25cf ':'')+core+' \u2014 MDLook';
+}
+function updateFileChrome(name,path,label){
+  if(name)fileName=name;
+  filePath=path||'';
+  const fn=$('#fn');
+  if(fn){
+    fn.textContent=label||fileName||'New document';
+    if(filePath)fn.setAttribute('title',filePath);
+    else fn.removeAttribute('title');
+  }
+  document.title=window.mdlookTitleForFile(fileName,filePath,hasUnsaved);
+}
 
 /* ── Theme ── */
 const saved=localStorage.getItem('mdv-theme');
@@ -2992,11 +3119,9 @@ $('#fileInput').addEventListener('change',e=>{
   reader.onload=async ev=>{
     if(hasUnsaved&&!await appConfirm('Unsaved changes. Open another file?'))return;
     rawMd=ev.target.result;
-    fileName=file.name;
     hasUnsaved=false;
     document.body.classList.remove('unsaved');
-    $('#fn').textContent=fileName;
-    document.title=fileName+' \u2014 MDLook';
+    updateFileChrome(file.name,'');
     clearAutoSave();
     setMode('read');
   };
@@ -3161,14 +3286,14 @@ function updateStats(){
 }
 
 function updatePreview(){$('#preview').innerHTML=parseMd($('#editor').value);renderMath($('#preview'));renderMermaid($('#preview'));wireCopy('#preview');buildOutline()}
-function markUnsaved(){if(!hasUnsaved){hasUnsaved=true;document.body.classList.add('unsaved');document.title='\u25cf '+fileName+' \u2014 MDLook'}}
+function markUnsaved(){if(!hasUnsaved){hasUnsaved=true;document.body.classList.add('unsaved');document.title=window.mdlookTitleForFile(fileName,filePath,true)}}
 
 /* ── Save ── */
 $('#btnSave').addEventListener('click',saveFile);
 function saveFile(){
   rawMd=$('#editor').value;
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([rawMd],{type:'text/markdown;charset=utf-8'}));a.download=fileName||'document.md';a.click();URL.revokeObjectURL(a.href);
-  hasUnsaved=false;document.body.classList.remove('unsaved');document.title=fileName+' \u2014 MDLook';
+  hasUnsaved=false;document.body.classList.remove('unsaved');updateFileChrome(fileName,filePath);
   const btn=$('#btnSave'),orig=btn.innerHTML;btn.classList.add('saved');
   btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px"><polyline points="20 6 9 17 4 12"/></svg> Saved!';
   setTimeout(()=>{btn.innerHTML=orig;btn.classList.remove('saved')},1500);
@@ -3479,13 +3604,17 @@ function scrollEditorToHeading(headingText){
   ed.scrollTop=ratio*(ed.scrollHeight-ed.clientHeight);
 }
 
-/* ── TOC link handler — expand collapsed sections ── */
+/* ── Internal anchor links — expand collapsed sections ── */
 document.addEventListener('click',e=>{
-  const a=e.target.closest('.md-toc a');
+  const a=e.target.closest('a[href^="#"]');
   if(!a)return;
+  const href=a.getAttribute('href')||'';
+  if(href==='#')return;
   e.preventDefault();
-  const id=a.getAttribute('href').slice(1);
-  const target=document.getElementById(id);
+  e.stopPropagation();
+  let id=href.slice(1);
+  try{id=decodeURIComponent(id)}catch(_){}
+  const target=document.getElementById(id)||document.getElementsByName(id)[0];
   if(!target)return;
   let el=target.closest('.md-section');
   const toExpand=[];
@@ -3495,7 +3624,8 @@ document.addEventListener('click',e=>{
   }
   toExpand.reverse().forEach(s=>s.classList.remove('collapsed'));
   target.scrollIntoView({behavior:'smooth',block:'start'});
-});
+  try{if(history&&history.replaceState)history.replaceState(null,'',href)}catch(_){}
+},true);
 
 /* ── 8) Collapsible Sections (v2.17.3) ── */
 function wrapCollapsible(container){
@@ -3773,39 +3903,86 @@ function syncPreviewToEditor(){
   let anchor=null;
   for(const el of els){
     const r=el.getBoundingClientRect();
-    if(r.top>=targetY-10){anchor=el;break}
+    if(r.bottom>=targetY&&r.top<=pvRect.bottom){anchor=el;break}
   }
   if(!anchor)return;
-  /* Get the text content and find it in editor source */
-  let txt=anchor.textContent.trim().substring(0,60);
-  if(!txt)return;
-  const pos=ed.value.indexOf(txt);
-  if(pos===-1){
-    /* Try shorter fragment */
-    txt=txt.substring(0,30);
-    const pos2=ed.value.indexOf(txt);
-    if(pos2===-1)return;
-    ed.scrollTop=Math.max(0,editorCharToScroll(pos2)-ed.clientHeight/4);
-  } else {
-    ed.scrollTop=Math.max(0,editorCharToScroll(pos)-ed.clientHeight/4);
-  }
+  const pos=findEditorPositionForPreviewText(anchor.textContent);
+  if(pos===-1)return;
+  ed.scrollTop=Math.max(0,editorCharToScroll(pos)-ed.clientHeight/4);
 }
 
 /* Strip markdown syntax to get plain text for matching against rendered preview */
 function stripMd(s){
   return s.replace(/^#{1,6}\s+/,'')       /* headings */
+          .replace(/<[^>]+>/g,'')         /* inline HTML anchors/tags */
+          .replace(/\{color:\s*[^}]+\}/g,'').replace(/\{\/color\}/g,'')
           .replace(/\*\*(.+?)\*\*/g,'$1') /* bold */
           .replace(/__(.+?)__/g,'$1')
           .replace(/\*(.+?)\*/g,'$1')     /* italic */
           .replace(/_(.+?)_/g,'$1')
           .replace(/~~(.+?)~~/g,'$1')     /* strikethrough */
+          .replace(/==(.+?)==/g,'$1')      /* highlight */
           .replace(/`(.+?)`/g,'$1')       /* inline code */
+          .replace(/^\s*[-*+]\s+\[[ xX]\]\s+/,'') /* task list items */
           .replace(/^\s*[-*+]\s+/,'')      /* list items */
           .replace(/^\s*\d+\.\s+/,'')      /* ordered list */
           .replace(/^\s*>\s?/,'')          /* blockquote */
-          .replace(/\[([^\]]+)\]\([^)]+\)/g,'$1') /* links */
           .replace(/!\[([^\]]*)\]\([^)]+\)/g,'$1') /* images */
+          .replace(/\[([^\]]+)\]\([^)]+\)/g,'$1') /* links */
           .trim();
+}
+
+function normalizeSyncText(s){
+  return stripMd(String(s||'')).replace(/\s+/g,' ').trim();
+}
+
+function findEditorPositionForPreviewText(previewText){
+  const ed=$('#editor');
+  const source=ed.value;
+  const raw=String(previewText||'').replace(/\s+/g,' ').trim();
+  if(raw.length<3)return -1;
+
+  const rawFragments=[raw.substring(0,120),raw.substring(0,80),raw.substring(0,50),raw.substring(0,30)]
+    .filter((v,i,a)=>v.length>=3&&a.indexOf(v)===i);
+  for(const frag of rawFragments){
+    const pos=source.indexOf(frag);
+    if(pos!==-1)return pos;
+  }
+
+  const target=normalizeSyncText(raw);
+  if(target.length<3)return -1;
+  const fragments=[target.substring(0,120),target.substring(0,80),target.substring(0,50),target.substring(0,30)]
+    .filter((v,i,a)=>v.length>=3&&a.indexOf(v)===i);
+
+  const lines=source.split('\n');
+  const entries=[];
+  let charPos=0;
+  for(let i=0;i<lines.length;i++){
+    entries.push({start:charPos,raw:lines[i],clean:normalizeSyncText(lines[i])});
+    charPos+=lines[i].length+1;
+  }
+
+  for(const frag of fragments){
+    for(const entry of entries){
+      if(entry.clean.length<3)continue;
+      if(entry.clean.includes(frag)||frag.includes(entry.clean))return entry.start;
+    }
+  }
+
+  for(const frag of fragments){
+    for(let i=0;i<entries.length;i++){
+      let clean='',start=-1;
+      for(let j=i;j<Math.min(entries.length,i+5);j++){
+        if(entries[j].clean){
+          if(start===-1)start=entries[j].start;
+          clean+=(clean?' ':'')+entries[j].clean;
+        }
+        if(start!==-1&&(clean.includes(frag)||frag.includes(clean)))return start;
+      }
+    }
+  }
+
+  return -1;
 }
 
 /* Search preview DOM for a text fragment, scroll to it if found */
@@ -3903,7 +4080,7 @@ ctxMenu.addEventListener('click',e=>{
 });
 
 /* ── Open Folder (v3.0) ── */
-const mdFolder=$('#md-folder')?.textContent?.trim().replace(/"+$/,'').replace(/^"+/,'')||'';
+const mdFolder=readEmbeddedText('md-folder');
 if(mdFolder&&mdFolder!=='MDFOLDER_PLACEHOLDER'){
   $('#folderPath').textContent=mdFolder;
   $('#openFolderBtn').addEventListener('click',()=>{
@@ -3924,7 +4101,7 @@ document.addEventListener('keydown',e=>{
     if(e.key==='1'){e.preventDefault();setMode('read')}
     if(e.key==='2'){e.preventDefault();setMode('edit')}
     if(e.key==='3'){e.preventDefault();setMode('source')}
-    if(e.key==='f'||e.key==='F'){e.preventDefault();openFindBar()}
+    if(e.key==='f'||e.key==='F'){e.preventDefault();openFindBar(e.target)}
     if(e.shiftKey&&(e.key==='w'||e.key==='W')){e.preventDefault();setWide(!document.body.classList.contains('wide'))}
   }
   if(e.key==='F1'){e.preventDefault();$('#helpModal').classList.toggle('active')}
@@ -3946,7 +4123,7 @@ function wireCopy(c){document.querySelectorAll(c+' .cp').forEach(b=>b.addEventLi
 window.addEventListener('beforeunload',e=>{if(hasUnsaved){e.preventDefault();e.returnValue=''}});
 
 /* ── Markdown parser ── */
-function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 /* ── KaTeX math rendering (v2.17.3) ── */
 function renderMath(container){
   if(typeof katex==='undefined'){
@@ -3991,6 +4168,12 @@ function parseInline(t){
     codeSlots.push(code);
     return '\uE003ICODE'+idx+'\uE003';
   });
+  const htmlSlots=[];
+  function htmlSlot(html){
+    const idx=htmlSlots.length;
+    htmlSlots.push(html);
+    return '\uE004HTML'+idx+'\uE004';
+  }
   // Neutralize RAWTEXT HTML tags that swallow all subsequent content
   t=t.replace(/<(\/?)(style|script|textarea|title|xmp|plaintext)\b([^>]*)>/gi,function(_,sl,tag,rest){return '&lt;'+sl+tag+rest+'&gt;'});
   // Colored text: {color:#hex}text{/color} or {color:name}text{/color}
@@ -4002,8 +4185,17 @@ function parseInline(t){
     const safe=c.replace(/[^a-zA-Z0-9#(),.\-% ]/g,'');
     return '<span class="color-text" style="color:'+safe+'">'+txt+'</span>';
   });
-  t=t.replace(/!\[([^\]]*)\]\(([^)]+)\)/g,'<img src="$2" alt="$1">');
-  t=t.replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+  t=t.replace(/!\[([^\]]*)\]\(([^)]+)\)/g,function(_,alt,src){
+    const resolved=esc(resolveMdUrl(src,'image'));
+    const safeAlt=esc(alt);
+    const rawSrc=esc(src);
+    return htmlSlot('<span class="mdlook-image"><img src="'+resolved+'" alt="'+safeAlt+'" data-md-src="'+rawSrc+'" onerror="this.style.display=&quot;none&quot;;if(this.nextElementSibling)this.nextElementSibling.style.display=&quot;inline-block&quot;"><span class="mdlook-img-fallback" style="display:none">Image not found: '+rawSrc+'</span></span>');
+  });
+  t=t.replace(/\[([^\]]+)\]\(([^)]+)\)/g,function(_,label,href){
+    href=esc(resolveMdUrl(href,'link'));
+    if(href.charAt(0)==='#')return htmlSlot('<a href="'+href+'">'+label+'</a>');
+    return htmlSlot('<a href="'+href+'" rel="noopener">'+label+'</a>');
+  });
   // Footnote references [^id]
   t=t.replace(/\[\^([^\]]+)\]/g,'<sup><a class="footnote-ref" id="fnref-$1" href="#fn-$1">$1</a></sup>');
   t=t.replace(/\*\*\*(.+?)\*\*\*/g,'<strong><em>$1</em></strong>');
@@ -4017,7 +4209,9 @@ function parseInline(t){
   t=t.replace(/==(.+?)==/g,'<mark>$1</mark>');
   // Restore inline code from slots
   t=t.replace(/\uE003ICODE(\d+)\uE003/g,function(_,idx){return '<code>'+esc(codeSlots[parseInt(idx)])+'</code>';});
-  t=t.replace(/(^|[^"(])(https?:\/\/[^\s<)]+)/g,'$1<a href="$2" target="_blank" rel="noopener">$2</a>');
+  t=t.replace(/(^|[^"(])(https?:\/\/[^\s<)]+)/g,function(_,prefix,url){
+    return prefix+htmlSlot('<a href="'+esc(resolveMdUrl(url,'link'))+'" rel="noopener">'+url+'</a>');
+  });
   // Color swatches
   t=t.replace(/(#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3}))\b/g,function(m,hex,offset){
     const before=t.substring(Math.max(0,offset-200),offset);
@@ -4030,6 +4224,7 @@ function parseInline(t){
     const expr=mathSlots[parseInt(idx)];
     return '<span class="math-inline" data-math="'+esc(expr)+'"></span>';
   });
+  t=t.replace(/\uE004HTML(\d+)\uE004/g,function(_,idx){return htmlSlots[parseInt(idx)]});
   return t;
 }
 function parseMd(md){
@@ -4116,9 +4311,40 @@ function parseMd(md){
 }
 
 /* ── Find Bar ── */
-const findState={marks:[],idx:-1,query:''};
+const findState={marks:[],idx:-1,query:'',mode:'dom',target:null,lastTarget:'reader'};
 
-function openFindBar(){
+function findTargetFromNode(node){
+  if(!node||!node.closest)return null;
+  if(node.closest('#findBar'))return null;
+  if(node.closest('#editor'))return 'editor';
+  if(node.closest('#previewPane')||node.closest('#preview'))return 'preview';
+  if(node.closest('#reader')||node.closest('#readerContent'))return 'reader';
+  if(node.closest('#rawSource'))return 'source';
+  return null;
+}
+
+function rememberFindTarget(node){
+  const target=findTargetFromNode(node);
+  if(target)findState.lastTarget=target;
+  return target;
+}
+
+function currentFindTarget(origin){
+  if(findState.target)return findState.target;
+  const target=rememberFindTarget(origin)||findTargetFromNode(document.activeElement);
+  if(target)return target;
+  if(currentMode==='edit'){
+    if(findState.lastTarget==='preview'||findState.lastTarget==='editor')return findState.lastTarget;
+    return 'editor';
+  }
+  return findState.lastTarget||'reader';
+}
+
+document.addEventListener('focusin',e=>rememberFindTarget(e.target),true);
+document.addEventListener('pointerdown',e=>rememberFindTarget(e.target),true);
+
+function openFindBar(origin){
+  findState.target=currentFindTarget(origin);
   $('#findBar').classList.add('open');
   const fi=$('#findInput');
   fi.focus();
@@ -4126,32 +4352,114 @@ function openFindBar(){
 }
 
 function closeFindBar(){
+  const editorMatch=findState.mode==='editor'&&findState.idx>=0&&findState.idx<findState.marks.length?findState.marks[findState.idx]:null;
   $('#findBar').classList.remove('open');
   clearFindMarks();
-  findState.marks=[];findState.idx=-1;findState.query='';
+  findState.marks=[];findState.idx=-1;findState.query='';findState.mode='dom';findState.target=null;
   $('#findCount').textContent='';
-  if(currentMode==='edit')$('#editor').focus();
+  if(editorMatch){
+    const ed=$('#editor');
+    ed.focus();
+    ed.setSelectionRange(editorMatch.start,editorMatch.end);
+  }
 }
 
 function getFindContainer(){
+  const target=currentFindTarget();
+  if(target==='preview')return $('#preview');
+  if(target==='source')return $('#rawSource');
+  if(target==='reader')return $('#readerContent');
   if(currentMode==='read')return $('#readerContent');
-  if(currentMode==='edit')return $('#preview');
   return $('#rawSource');
 }
 
 function clearFindMarks(){
-  const container=getFindContainer();
-  container.querySelectorAll('mark.find-hl').forEach(m=>{
+  document.querySelectorAll('mark.find-hl').forEach(m=>{
     const parent=m.parentNode;
     parent.replaceChild(document.createTextNode(m.textContent),m);
     parent.normalize();
   });
+  clearEditorFindOverlay();
+}
+
+function clearEditorFindOverlay(){
+  const overlay=$('#mdlook-editor-find-overlay');
+  if(overlay&&overlay.parentNode)overlay.parentNode.removeChild(overlay);
+}
+
+function ensureEditorFindOverlay(ed){
+  let overlay=$('#mdlook-editor-find-overlay');
+  if(!overlay){
+    overlay=document.createElement('div');
+    overlay.id='mdlook-editor-find-overlay';
+    ed.parentNode.appendChild(overlay);
+    ed.addEventListener('scroll',()=>syncEditorFindOverlay(ed));
+  }
+  const cs=getComputedStyle(ed);
+  overlay.style.font=cs.font;
+  overlay.style.lineHeight=cs.lineHeight;
+  overlay.style.padding=cs.padding;
+  overlay.style.border=cs.border;
+  overlay.style.letterSpacing=cs.letterSpacing;
+  overlay.style.tabSize=cs.tabSize;
+  overlay.style.width=ed.clientWidth+'px';
+  overlay.style.height=ed.clientHeight+'px';
+  return overlay;
+}
+
+function syncEditorFindOverlay(ed){
+  const overlay=$('#mdlook-editor-find-overlay');
+  if(!overlay)return;
+  overlay.scrollTop=ed.scrollTop;
+  overlay.scrollLeft=ed.scrollLeft;
+}
+
+function renderEditorFindOverlay(ed){
+  if(findState.mode!=='editor'||!findState.query||findState.marks.length===0){
+    clearEditorFindOverlay();
+    return;
+  }
+  const overlay=ensureEditorFindOverlay(ed);
+  overlay.textContent='';
+  const text=ed.value||'';
+  const frag=document.createDocumentFragment();
+  let last=0;
+  findState.marks.forEach((match,idx)=>{
+    if(match.start>last)frag.appendChild(document.createTextNode(text.slice(last,match.start)));
+    const mark=document.createElement('mark');
+    mark.className='find-hl'+(idx===findState.idx?' current':'');
+    mark.textContent=text.slice(match.start,match.end);
+    frag.appendChild(mark);
+    last=match.end;
+  });
+  if(last<text.length)frag.appendChild(document.createTextNode(text.slice(last)));
+  overlay.appendChild(frag);
+  syncEditorFindOverlay(ed);
 }
 
 function doFind(query){
   clearFindMarks();
-  findState.marks=[];findState.idx=-1;findState.query=query;
+  findState.marks=[];findState.idx=-1;findState.query=query;findState.mode='dom';
   if(!query){$('#findCount').textContent='';return}
+
+  if(currentFindTarget()==='editor'){
+    findState.mode='editor';
+    const ed=$('#editor');
+    const text=ed.value||'';
+    const lower=text.toLowerCase();
+    const q=query.toLowerCase();
+    let pos=0;
+    while(true){
+      const idx=lower.indexOf(q,pos);
+      if(idx===-1)break;
+      findState.marks.push({start:idx,end:idx+query.length});
+      pos=idx+query.length;
+    }
+    updateFindCount();
+    if(findState.marks.length>0)goToMatch(0);
+    else renderEditorFindOverlay(ed);
+    return;
+  }
 
   const container=getFindContainer();
   const q=query.toLowerCase();
@@ -4193,42 +4501,19 @@ function goToMatch(idx){
   if(findState.marks.length===0)return;
   findState.idx=idx;
   updateFindCount();
+  if(findState.mode==='editor'){
+    const ed=$('#editor');
+    const match=findState.marks[idx];
+    renderEditorFindOverlay(ed);
+    ed.setSelectionRange(match.start,match.end);
+    ed.scrollTop=Math.max(0,editorCharToScroll(match.start)-ed.clientHeight/3);
+    return;
+  }
+
   document.querySelectorAll('mark.find-hl.current').forEach(m=>m.classList.remove('current'));
   const mark=findState.marks[idx];
   mark.classList.add('current');
-  if(currentMode==='edit'){
-    syncScrolling=false;
-    /* Find Nth occurrence in editor source to measure its scroll position */
-    const ed=$('#editor');
-    const text=ed.value.toLowerCase();
-    const q=findState.query.toLowerCase();
-    let pos=-1;
-    for(let i=0;i<=idx;i++){
-      pos=text.indexOf(q,pos+1);
-      if(pos===-1)break;
-    }
-    if(pos!==-1){
-      /* Measure pixel offset using a hidden mirror div */
-      const mirror=document.createElement('div');
-      const cs=getComputedStyle(ed);
-      mirror.style.cssText='position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow:hidden;';
-      mirror.style.width=cs.width;
-      mirror.style.font=cs.font;
-      mirror.style.lineHeight=cs.lineHeight;
-      mirror.style.padding=cs.padding;
-      mirror.style.tabSize=cs.tabSize;
-      mirror.textContent=ed.value.substring(0,pos);
-      ed.parentNode.appendChild(mirror);
-      const targetY=mirror.scrollHeight;
-      mirror.remove();
-      ed.scrollTop=Math.max(0,targetY-ed.clientHeight/3);
-    }
-    /* Now scroll preview to the match */
-    mark.scrollIntoView({block:'center',behavior:'instant'});
-      setTimeout(()=>{syncScrolling=true},50);
-  } else {
-    mark.scrollIntoView({block:'center',behavior:'smooth'});
-  }
+  mark.scrollIntoView({block:'center',behavior:'smooth'});
 }
 
 function updateFindCount(){
@@ -4238,6 +4523,9 @@ function updateFindCount(){
 }
 
 $('#findInput').addEventListener('input',e=>doFind(e.target.value));
+$('#editor').addEventListener('input',()=>{
+  if($('#findBar').classList.contains('open')&&findState.target==='editor'&&$('#findInput').value)doFind($('#findInput').value);
+});
 $('#findInput').addEventListener('keydown',e=>{
   if(e.key==='Enter'){
     e.preventDefault();
@@ -4252,12 +4540,18 @@ $('#findPrev').addEventListener('click',()=>{if(findState.marks.length)goToMatch
 $('#findClose').addEventListener('click',closeFindBar);
 
 /* ── Init ── */
-try{rawMd=JSON.parse(document.getElementById('md-data').textContent);fileName=document.getElementById('md-name').textContent.trim();$('#fn').textContent=fileName;document.title=fileName+' \u2014 MDLook';setMode('read')}
+try{
+  rawMd=JSON.parse(document.getElementById('md-data').textContent);
+  const embeddedName=readEmbeddedText('md-name');
+  const embeddedFolder=readEmbeddedText('md-folder');
+  updateFileChrome(embeddedName,joinFsPath(embeddedFolder,embeddedName));
+  setMode('read');
+}
 catch(e){
   /* New document mode — try loading autosave draft */
   rawMd='';fileName='untitled.md';
   if(location.hash!=='#new') loadAutoSave();
-  $('#fn').textContent=rawMd?fileName||'Recovered draft':'New document';
+  updateFileChrome(fileName,'',rawMd?fileName||'Recovered draft':'New document');
   setMode('edit');
 }
 function appConfirm(msg){
