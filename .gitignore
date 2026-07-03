@@ -1,6 +1,8 @@
 __pycache__/
 *.pyc
 .context/
+.superpowers/
+docs/its-link-normalization-*.json
 runs/
 build/
 dist/

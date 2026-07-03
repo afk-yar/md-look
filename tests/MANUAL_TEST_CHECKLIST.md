@@ -64,6 +64,27 @@ pip install pywebview pystray pillow
 - [ ] Ожидается: нет видимых окон, появляется только tray-иконка
 - [ ] Двойной клик по tray-иконке (или Show MDLook) → окно появляется
 
+### 11. Ссылки и картинки из Markdown
+- [ ] Закрыть старые экземпляры MDLook или проверить, что активный процесс запущен из тестируемой сборки: `Get-Process MDLook | Select-Object Id,Path,StartTime`
+- [ ] Запустить тестируемую сборку с файлом `docs/links-images-repro.md`
+- [ ] Ожидается: картинка `Whiteboard` отображается, `Missing image` показывает fallback
+- [ ] Клик по `Linked note` открывает `docs/linked-note.md` в MDLook и переходит к `#target`
+- [ ] Клик по `Back to target` скроллит внутри текущего окна
+- [ ] Клик по `External site` открывает системный браузер
+- [ ] Если открылся браузер с `%TEMP%/linked-note.md`, проверяется не та сборка или используется старый шаблон
+
+### 12. Навигация по соседним файлам книги
+- [ ] Закрыть старые экземпляры MDLook или проверить, что активный процесс запущен из тестируемой сборки: `Get-Process MDLook | Select-Object Id,Path,StartTime`
+- [ ] Открыть файл `E:/_AI/_Доки/1С/ERP-WE/ИТС-книги/erpwedoc/markdown/0147_2.11._Планирование_сборки_и_разборки.md`
+- [ ] Нажать кнопку `This folder` в toolbar
+- [ ] Ожидается: слева открывается панель со списком соседних `.md` файлов из `E:/_AI/_Доки/1С/ERP-WE/ИТС-книги/erpwedoc/markdown`
+- [ ] Ввести `0097` в фильтр
+- [ ] Ожидается: в списке остается `0097_2.3._Настройки_формирования_планов.md`
+- [ ] Кликнуть по `0097_2.3._Настройки_формирования_планов.md`
+- [ ] Ожидается: документ меняется в том же окне, заголовок окна и плашка имени файла показывают `0097_2.3._Настройки_формирования_планов.md`
+- [ ] Снова открыть панель, найти `0147`, вернуться к `0147_2.11._Планирование_сборки_и_разборки.md`
+- [ ] Если открылось новое окно или список пустой при наличии файлов, проверяется не та сборка или bridge не получил `filePath`
+
 ---
 
 ## Проверка отсутствия утечек
@@ -87,8 +108,11 @@ pip install pywebview pystray pillow
 | Quit + closing | `TestWindowLifecycle::test_closing_with_quitting_returns_true` |
 | IPC OPEN: | `TestIpcProtocol::test_open_message_calls_create_window` |
 | IPC SHOW | `TestIpcProtocol::test_show_message_calls_force_foreground` |
+| IPC порт scoped по exe/dev path | `TestIpcProtocol::test_ipc_port_is_scoped_by_executable_identity` |
 | Второй экземпляр → True | `TestIpcProtocol::test_signal_existing_instance_returns_true_when_listener_running` |
 | Нет первого → False | `TestIpcProtocol::test_signal_existing_instance_returns_false_when_no_listener` |
 | Независимые Api | `TestApiIsolation::test_save_file_writes_to_own_current_path` |
 | --silent парсинг | `TestGetFileArg::test_argv_silent_only_returns_none` |
 | Temp-файл при quit | `TestBuildHtml::test_cleanup_removes_temp_files` |
+| Markdown ссылки и картинки | `tests/test_links_images.py` |
+| Навигация по соседним файлам | `tests/test_folder_navigation.py` |
