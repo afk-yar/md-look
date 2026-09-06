@@ -189,7 +189,7 @@ class TestIpcProtocol:
         m_create.assert_not_called()
 
     def test_signal_existing_instance_returns_true_when_listener_running(self):
-        """_signal_existing_instance() → True when listener is active."""
+        """_signal_existing_instance() → True when the mutex is held and a listener is active."""
         port = self._free_port()
 
         with patch.object(app, 'IPC_PORT', port), \
@@ -197,8 +197,12 @@ class TestIpcProtocol:
             app._start_ipc_listener()
             self._wait_for_listener(port)
 
-            with patch.object(app, 'IPC_PORT', port):
+            # The running instance is marked by the named mutex, not by the port.
+            holder, _ = app._acquire_instance_mutex(app._instance_mutex_name())
+            try:
                 result = app._signal_existing_instance()
+            finally:
+                app._close_handle(holder)
 
         assert result is True
 
@@ -229,19 +233,29 @@ class TestIpcProtocol:
 
         with patch.object(app, 'IPC_PORT', port), \
              patch.object(sys, 'argv', ['app.py', str(md_file), '--goto', 'T-09']):
-            result = app._signal_existing_instance()
+            holder, _ = app._acquire_instance_mutex(app._instance_mutex_name())
+            try:
+                result = app._signal_existing_instance()
+            finally:
+                app._close_handle(holder)
 
         assert result is True
         assert done.wait(timeout=5), "Test listener did not receive IPC message"
         assert received == ['OPEN:' + filepath + '\tT-09']
 
     def test_signal_existing_instance_returns_false_when_no_listener(self):
-        """_signal_existing_instance() → False when nothing is listening."""
+        """_signal_existing_instance() → False when no instance holds the mutex."""
         port = self._free_port()
         # Don't start listener
 
-        with patch.object(app, 'IPC_PORT', port):
-            result = app._signal_existing_instance()
+        with patch.object(app, 'IPC_PORT', port), \
+             patch.object(app, '_instance_mutex_handle', None):
+            try:
+                result = app._signal_existing_instance()
+                # This process became the first instance and keeps the mutex.
+                assert app._instance_mutex_handle
+            finally:
+                app._close_handle(app._instance_mutex_handle)
 
         assert result is False
 

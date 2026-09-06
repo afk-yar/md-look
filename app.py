@@ -338,22 +338,96 @@ def _format_window_title(filepath=None, filename='', folder='', dirty=False):
     return prefix + core + ' — MDLook'
 
 
-def _signal_existing_instance():
-    """Try to signal an already-running instance to show/open file. Returns True if successful."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(1)
+ERROR_ALREADY_EXISTS = 183
+
+# Handle of the named mutex owned by the first instance. Kept for the whole
+# process lifetime — the OS releases it when the process exits, so a hung or
+# killed instance never blocks the next launch.
+_instance_mutex_handle = None
+
+
+def _instance_mutex_name(port=None):
+    """Name of the named mutex that marks a running instance of this app copy."""
+    return 'Local\\MDLook-%d' % (IPC_PORT if port is None else port)
+
+
+def _acquire_instance_mutex(name):
+    """Create the named mutex. Returns (handle, already_exists)."""
+    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel32.CreateMutexW.restype = ctypes.wintypes.HANDLE
+    kernel32.CreateMutexW.argtypes = (
+        ctypes.c_void_p, ctypes.wintypes.BOOL, ctypes.wintypes.LPCWSTR)
+    handle = kernel32.CreateMutexW(None, False, name)
+    err = ctypes.get_last_error()
+    return handle, err == ERROR_ALREADY_EXISTS
+
+
+def _close_handle(handle):
+    """Close a Win32 handle, ignoring failures."""
+    if not handle:
+        return
     try:
-        s.connect(('127.0.0.1', IPC_PORT))
-        filepath = _get_file_arg()
-        if filepath:
-            msg = _build_open_message(filepath, _get_goto_arg())
-        else:
-            msg = 'SHOW'
-        s.sendall(msg.encode('utf-8'))
-        s.close()
-        return True
-    except (ConnectionRefusedError, OSError, socket.timeout):
+        ctypes.windll.kernel32.CloseHandle(ctypes.wintypes.HANDLE(handle))
+    except Exception:
+        pass
+
+
+def _signal_message():
+    """Command this launch hands to the already-running instance."""
+    filepath = _get_file_arg()
+    if filepath:
+        return _build_open_message(filepath, _get_goto_arg())
+    return 'SHOW'
+
+
+def _send_ipc_message(msg, total_timeout=3.0, attempt_timeout=0.5, retry_delay=0.1):
+    """Send one IPC command to the running instance. Returns True if delivered.
+
+    The first instance owns the mutex before its listener thread binds the port,
+    so a connection refusal right after startup is retried for a short window.
+    """
+    import time
+
+    deadline = time.perf_counter() + total_timeout
+    payload = msg.encode('utf-8')
+    while True:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(attempt_timeout)
+        try:
+            s.connect(('127.0.0.1', IPC_PORT))
+            s.sendall(payload)
+            return True
+        except (ConnectionRefusedError, OSError, socket.timeout):
+            pass
+        finally:
+            try:
+                s.close()
+            except Exception:
+                pass
+        if time.perf_counter() + retry_delay >= deadline:
+            return False
+        time.sleep(retry_delay)
+
+
+def _signal_existing_instance():
+    """Detect a running instance via named mutex and signal it. True if signalled.
+
+    No instance running -> the mutex handle is kept (this process becomes the
+    first instance) and no socket is touched, so startup pays nothing for the
+    localhost connect that used to block for a full second.
+    """
+    global _instance_mutex_handle
+
+    handle, already_exists = _acquire_instance_mutex(_instance_mutex_name())
+    if not handle:
+        # Mutex machinery unavailable — fall back to probing the IPC port only.
+        return _send_ipc_message(_signal_message(), total_timeout=0.0)
+    if not already_exists:
+        _instance_mutex_handle = handle
         return False
+
+    _close_handle(handle)
+    return _send_ipc_message(_signal_message())
 
 
 def _start_ipc_listener():
