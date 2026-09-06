@@ -809,7 +809,7 @@ BRIDGE_JS = """
       // Get the full rendered page HTML from the document
       var clone = document.documentElement.cloneNode(true);
       // Remove UI elements not needed in export
-      var remove = clone.querySelectorAll('.bar, .editor-wrap, .outline-panel, .folder-panel, .folder-panel-scrim, .zen-exit, .modal, script, .teleprompter-bar, .auto-scroll-btn');
+      var remove = clone.querySelectorAll('.bar, .editor-wrap, .outline-panel, .folder-panel, .folder-panel-scrim, .zen-exit, .modal, script, .teleprompter-bar, .auto-scroll-btn, .lightbox');
       for(var i=0;i<remove.length;i++) remove[i].remove();
       // Clean up body classes
       var body = clone.querySelector('body');
