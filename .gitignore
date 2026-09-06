@@ -7,3 +7,6 @@ runs/
 build/
 dist/
 *.spec
+
+# one-file PyInstaller build (34 MB, not the deliverable; dist/ folder build is)
+/MDLook.exe
