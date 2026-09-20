@@ -4,7 +4,7 @@
 
 - When work changes `app.py`, bundled assets, or anything affecting `MDLook.exe`, finish by rebuilding the folder distribution with:
   `python -m PyInstaller --noconfirm MDLook.spec`
-- The primary runtime artifact for this project is `dist/MDLook/MDLook.exe`. Do not treat the root `MDLook.exe` one-file build as the main deliverable unless the user explicitly asks for it.
+- The only runtime artifact for this project is the folder build `dist/MDLook/` (installed copy: `C:\Program Files\MDLook\`). Do not produce a one-file (`--onefile`) build: it unpacks itself on every start and was removed on 2026-09-20 along with its history in git.
 - After the build, verify `dist/MDLook/MDLook.exe` timestamp so it is clear the distribution was refreshed.
 
 ## Verifying UI Changes
