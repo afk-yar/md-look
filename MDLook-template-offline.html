@@ -2242,7 +2242,7 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg)
 
 /* Reader */
 .reader{position:fixed;top:var(--bar-h);left:0;right:0;bottom:0;overflow-y:auto;animation:fi .3s ease}
-.reader-content{max-width:760px;margin:0 auto;padding:32px 48px 80px 32px}
+.reader-content{max-width:920px;margin:0 auto;padding:32px 40px 80px 40px}
 body.wide .reader-content{max-width:none}
 body.wide .raw-source pre{max-width:none;width:calc(100% - 64px)}
 body.wide.zen #editor{padding:32px 8%}
@@ -2280,7 +2280,7 @@ body.wide.zen #editor{padding:32px 8%}
 
 /* Source */
 .raw-source{display:none;position:fixed;top:var(--bar-h);left:0;right:0;bottom:0;overflow-y:auto}
-.raw-source.v{display:flex;flex-direction:column}.raw-source pre{max-width:760px;margin:32px auto 80px;background:var(--cbb);color:var(--cbt);padding:24px 32px;border-radius:var(--r);font-family:'JetBrains Mono',monospace;font-size:.84rem;line-height:1.65;white-space:pre-wrap;word-wrap:break-word;width:calc(100% - 64px);box-sizing:border-box;font-feature-settings:'liga' 0,'calt' 0}
+.raw-source.v{display:flex;flex-direction:column}.raw-source pre{max-width:920px;margin:32px auto 80px;background:var(--cbb);color:var(--cbt);padding:24px 32px;border-radius:var(--r);font-family:'JetBrains Mono',monospace;font-size:.84rem;line-height:1.65;white-space:pre-wrap;word-wrap:break-word;width:calc(100% - 64px);box-sizing:border-box;font-feature-settings:'liga' 0,'calt' 0}
 
 /* ── Modals ── */
 .modal-overlay{display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.4);backdrop-filter:blur(4px);align-items:center;justify-content:center;animation:fadeModal .15s ease}
@@ -4336,6 +4336,8 @@ function parseMd(md){
   function slugify(text){return text.replace(/<[^>]+>/g,'').replace(/[^\w\s-]/g,'').trim().replace(/\s+/g,'-').toLowerCase()}
   const lines=md.split('\n');let html='',i=0,inList=false,stk=[];
   function cl(){while(stk.length>0){const t=stk.pop();html+=(t.type||t)==='ol'?'</ol>':'</ul>'}inList=false}
+  // Lazy continuation: wrapped lines of a list item (indented or not) join the item instead of closing the list
+  function lazyCont(){let ex='';while(i<lines.length){const nt=lines[i].trim();if(nt===''||/^#{1,6}\s/.test(nt)||/^[-*+]\s/.test(nt)||/^\d+\.\s/.test(nt)||nt.startsWith('>')||/^[`~]{3,}/.test(nt)||/^(-{3,}|_{3,}|\*{3,})\s*$/.test(nt)||/^%%BLOCKMATH\d+%%$/.test(nt)||(nt.includes('|')&&i+1<lines.length&&/^\s*\|?\s*[-:]+/.test(lines[i+1])))break;ex+=' '+nt;i++}return ex}
   while(i<lines.length){
     const line=lines[i],tr=line.trimStart();
     if(tr==='[TOC]'||tr==='[toc]'){cl();html+='%%TOC%%';i++;continue}
@@ -4351,9 +4353,9 @@ function parseMd(md){
     if(tr.startsWith('>')){cl();let ql=[];while(i<lines.length){const q=lines[i].trimStart();if(!q.startsWith('>'))break;ql.push(q.replace(/^>\s?/,''));i++}html+='<blockquote>'+parseMd(ql.join('\n'))+'</blockquote>';continue}
     if(tr.includes('|')&&i+1<lines.length&&/^\s*\|?\s*[-:]+/.test(lines[i+1])){cl();const pr=r=>r.replace(/^\|/,'').replace(/\|$/,'').split('|').map(c=>c.trim());const hds=pr(tr),ar=pr(lines[i+1]),al=ar.map(c=>{if(c.startsWith(':')&&c.endsWith(':'))return'center';if(c.endsWith(':'))return'right';return'left'});let th='<table><thead><tr>';hds.forEach((h,j)=>th+='<th style="text-align:'+al[j]+'">'+parseInline(h)+'</th>');th+='</tr></thead><tbody>';i+=2;while(i<lines.length&&lines[i].trim()!==''&&lines[i].includes('|')){const cs=pr(lines[i]);th+='<tr>';cs.forEach((c,j)=>th+='<td style="text-align:'+(al[j]||'left')+'">'+parseInline(c)+'</td>');th+='</tr>';i++}th+='</tbody></table>';html+=th;continue}
     const lineIndent=line.length-line.trimStart().length;
-    const tm=tr.match(/^[-*]\s+\[([ xX])\]\s+(.*)/);if(tm){const ltype='tl';const content='<input type="checkbox" '+(tm[1]!==' '?'checked ':'')+' disabled><span>'+parseInline(tm[2])+'</span>';if(!inList){html+='<ul class="tl">';stk.push({type:'tl',indent:lineIndent});inList=true}else{const ci=stk[stk.length-1].indent;if(lineIndent>ci){html+='<ul class="tl">';stk.push({type:'tl',indent:lineIndent})}else if(lineIndent<ci){while(stk.length>1&&stk[stk.length-1].indent>lineIndent){const x=stk.pop();html+=x.type==='ol'?'</ol>':'</ul>'}}}html+='<li>'+content+'</li>';i++;continue}
-    const um=tr.match(/^[-*+]\s+(.*)/);if(um){if(!inList){html+='<ul>';stk.push({type:'ul',indent:lineIndent});inList=true}else{const ci=stk[stk.length-1].indent;if(lineIndent>ci){html+='<ul>';stk.push({type:'ul',indent:lineIndent})}else if(lineIndent<ci){while(stk.length>1&&stk[stk.length-1].indent>lineIndent){const x=stk.pop();html+=x.type==='ol'?'</ol>':'</ul>'}}}html+='<li>'+parseInline(um[1])+'</li>';i++;continue}
-    const om=tr.match(/^(\d+)\.\s+(.*)/);if(om){if(!inList){const s=parseInt(om[1]);html+=s!==1?'<ol start="'+s+'">':'<ol>';stk.push({type:'ol',indent:lineIndent});inList=true}else{const ci=stk[stk.length-1].indent;if(lineIndent>ci){html+='<ol>';stk.push({type:'ol',indent:lineIndent})}else if(lineIndent<ci){while(stk.length>1&&stk[stk.length-1].indent>lineIndent){const x=stk.pop();html+=x.type==='ol'?'</ol>':'</ul>'}}}html+='<li>'+parseInline(om[2])+'</li>';i++;continue}
+    const tm=tr.match(/^[-*]\s+\[([ xX])\]\s+(.*)/);if(tm){const ltype='tl';i++;const content='<input type="checkbox" '+(tm[1]!==' '?'checked ':'')+' disabled><span>'+parseInline(tm[2]+lazyCont())+'</span>';if(!inList){html+='<ul class="tl">';stk.push({type:'tl',indent:lineIndent});inList=true}else{const ci=stk[stk.length-1].indent;if(lineIndent>ci){html+='<ul class="tl">';stk.push({type:'tl',indent:lineIndent})}else if(lineIndent<ci){while(stk.length>1&&stk[stk.length-1].indent>lineIndent){const x=stk.pop();html+=x.type==='ol'?'</ol>':'</ul>'}}}html+='<li>'+content+'</li>';continue}
+    const um=tr.match(/^[-*+]\s+(.*)/);if(um){if(!inList){html+='<ul>';stk.push({type:'ul',indent:lineIndent});inList=true}else{const ci=stk[stk.length-1].indent;if(lineIndent>ci){html+='<ul>';stk.push({type:'ul',indent:lineIndent})}else if(lineIndent<ci){while(stk.length>1&&stk[stk.length-1].indent>lineIndent){const x=stk.pop();html+=x.type==='ol'?'</ol>':'</ul>'}}}i++;html+='<li>'+parseInline(um[1]+lazyCont())+'</li>';continue}
+    const om=tr.match(/^(\d+)\.\s+(.*)/);if(om){if(!inList){const s=parseInt(om[1]);html+=s!==1?'<ol start="'+s+'">':'<ol>';stk.push({type:'ol',indent:lineIndent});inList=true}else{const ci=stk[stk.length-1].indent;if(lineIndent>ci){html+='<ol>';stk.push({type:'ol',indent:lineIndent})}else if(lineIndent<ci){while(stk.length>1&&stk[stk.length-1].indent>lineIndent){const x=stk.pop();html+=x.type==='ol'?'</ol>':'</ul>'}}}i++;html+='<li>'+parseInline(om[2]+lazyCont())+'</li>';continue}
     cl();let pl=[tr];i++;while(i<lines.length){const nx=lines[i].trim();if(nx===''||nx.match(/^#{1,6}\s/)||nx.match(/^[-*+]\s/)||nx.match(/^\d+\.\s/)||nx.startsWith('>')||nx.startsWith('```')||nx.startsWith('~~~')||/^(-{3,}|_{3,}|\*{3,})\s*$/.test(nx))break;pl.push(nx);i++}html+='<p>'+pl.map(l=>parseInline(l)).join('<br>')+'</p>';
   }
   cl();
