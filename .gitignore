@@ -10,3 +10,6 @@ dist/
 
 # one-file PyInstaller build (34 MB, not the deliverable; dist/ folder build is)
 /MDLook.exe
+
+# pyinstxtractor output of the one-file build, local only
+/MDLook.exe_extracted/
