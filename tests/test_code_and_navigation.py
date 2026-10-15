@@ -181,6 +181,22 @@ def test_link_preview_only_inside_the_app(browser, doc_url):
     assert pg.evaluate("mdPreviewCalls.length") == 1
 
 
+def test_shortcuts_work_on_russian_layout(browser, doc_url):
+    pg = open_page(browser, doc_url)
+    # Russian layout: the physical keys F and W give 'а' and 'ц', the code stays KeyF / KeyW
+    press = """([t,k,c,s])=>document.querySelector(t).dispatchEvent(new KeyboardEvent('keydown',
+      {key:k,code:c,ctrlKey:true,shiftKey:s,bubbles:true,cancelable:true}))"""
+    pg.evaluate(press, ['#reader', 'а', 'KeyF', False])
+    assert pg.evaluate("document.getElementById('findBar').classList.contains('open')") is True
+    pg.keyboard.press('Escape')
+    pg.evaluate(press, ['#reader', 'Ц', 'KeyW', True])
+    assert pg.evaluate("document.body.classList.contains('wide')") is True
+    pg.evaluate("setMode('edit')")
+    pg.evaluate("const t=document.getElementById('editor');t.focus();t.setSelectionRange(2,10)")
+    pg.evaluate(press, ['#editor', 'и', 'KeyB', False])
+    assert '**' in pg.evaluate("document.getElementById('editor').value")
+
+
 def test_md_preview_reads_title_and_first_lines(tmp_path):
     (tmp_path / 'sub').mkdir()
     (tmp_path / 'sub' / 'n.md').write_text(

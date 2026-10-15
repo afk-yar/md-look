@@ -3297,6 +3297,13 @@ Prism.languages.sql={comment:{pattern:/(^|[^\\])(?:\/\*[\s\S]*?\*\/|(?:--|\/\/|#
 <script>
 const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
 let rawMd='',currentMode='read',hasUnsaved=false,fileName='',filePath='';
+// Shortcuts are written for Latin letters: on another layout (Russian) the physical key decides
+window.addEventListener('keydown',e=>{
+  if(!(e.ctrlKey||e.metaKey||e.altKey))return;
+  const m=/^Key([A-Z])$/.exec(e.code||'');
+  if(!m||/^[a-z]$/i.test(e.key))return;
+  Object.defineProperty(e,'key',{value:e.shiftKey?m[1]:m[1].toLowerCase()});
+},true);
 
 function readEmbeddedText(id){
   const el=document.getElementById(id);
