@@ -2266,7 +2266,7 @@ Expecting `+Qe.join(", ")+", got '"+(this.terminals_[Ne]||Ne)+"'":Dt="Parse erro
 
 </script>
 <style>
-:root{--bg:#f5f4f0;--s:#fff;--t:#1a1a1a;--t2:#5a5a5a;--tm:#8a8a8a;--b:#e5e2dd;--bl:#eeeae5;--a:#c96442;--as:#f3ebe6;--cb:#f0efeb;--cbb:#1e1e2e;--cbt:#cdd6f4;--lk:#b05a3a;--ic:#8a4a32;--icb:#e3d6cd;--sh:0 1px 3px rgba(0,0,0,.04),0 4px 12px rgba(0,0,0,.03);--r:10px;--bar-h:52px;--editor-bg:#ffffff;--clr-pink:#d63384;--clr-green:#198754;--clr-purple:#6f42c1;--clr-orange:#c96442;--clr-cyan:#0a8c9e;--clr-red:#dc3545;--clr-yellow:#a87d04;--clr-blue:#0d6efd}
+:root{--bg:#f5f4f0;--s:#fff;--t:#1a1a1a;--t2:#5a5a5a;--tm:#8a8a8a;--b:#e5e2dd;--bl:#eeeae5;--a:#c96442;--as:#f3ebe6;--cb:#f0efeb;--cbb:#1e1e2e;--cbt:#cdd6f4;--lk:#b05a3a;--ic:#8a4a32;--icb:#e3d6cd;--sh:0 1px 3px rgba(0,0,0,.04),0 4px 12px rgba(0,0,0,.03);--r:10px;--bar-h:52px;--editor-bg:#faf9f6;--clr-pink:#d63384;--clr-green:#198754;--clr-purple:#6f42c1;--clr-orange:#c96442;--clr-cyan:#0a8c9e;--clr-red:#dc3545;--clr-yellow:#a87d04;--clr-blue:#0d6efd}
 [data-theme=dark]{--bg:#1a1a1e;--s:#242428;--t:#e4e2de;--t2:#a8a6a0;--tm:#807e7a;--b:#333338;--bl:#2a2a2e;--a:#e07a54;--as:#2e2520;--cb:#2a2a30;--cbb:#16161e;--cbt:#cdd6f4;--lk:#e08a64;--ic:#e5926e;--icb:#4d3a31;--editor-bg:#1e1e22;--clr-pink:#ff79c6;--clr-green:#50fa7b;--clr-purple:#bd93f9;--clr-orange:#ffb86c;--clr-cyan:#8be9fd;--clr-red:#ff5555;--clr-yellow:#f1fa8c;--clr-blue:#89b4fa}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--t);line-height:1.7;min-height:100vh;transition:background .3s,color .3s;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility}
@@ -2324,7 +2324,7 @@ body.wide.zen #editor{padding:32px 8%}
 .sync-btn:hover{color:var(--a);background:var(--as);border-color:var(--a)}
 .sync-btn:active{transform:scale(.95)}
 .sync-btn svg{width:12px;height:12px}
-.fmt-bar{display:flex;align-items:center;gap:2px;padding:6px 12px;border-bottom:1px solid var(--b);background:var(--s);flex-shrink:0;flex-wrap:wrap}
+.fmt-bar{display:flex;align-items:center;gap:2px;padding:6px 12px;border-bottom:1px solid var(--b);background:var(--s);flex-shrink:0;flex-wrap:wrap}body:not([data-theme=dark]) .fmt-bar{background:var(--editor-bg)}
 .fmt-btn{width:30px;height:28px;border:none;border-radius:5px;background:transparent;color:var(--t2);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .12s;font-family:'JetBrains Mono',monospace;font-size:.8rem;font-weight:600;position:relative}
 .fmt-btn:hover{background:var(--as);color:var(--a)}
 .fmt-btn:active{transform:scale(.93)}
@@ -2805,6 +2805,7 @@ mark.find-hl.current{background:var(--a);color:#fff}
         <h3>Keyboard Shortcuts</h3>
         <div class="help-row"><span>Switch to Read</span> <kbd>Ctrl + 1</kbd></div>
         <div class="help-row"><span>Switch to Edit</span> <kbd>Ctrl + 2</kbd></div>
+        <div class="help-row"><span>Edit / back to Read</span> <kbd>Ctrl + E</kbd></div>
         <div class="help-row"><span>Switch to Source</span> <kbd>Ctrl + 3</kbd></div>
         <div class="help-row"><span>Save file</span> <kbd>Ctrl + S</kbd></div>
         <div class="help-row"><span>Bold</span> <kbd>Ctrl + B</kbd></div>
@@ -3300,7 +3301,7 @@ let rawMd='',currentMode='read',hasUnsaved=false,fileName='',filePath='';
 // Shortcuts are written for Latin letters: on another layout (Russian) the physical key decides
 window.addEventListener('keydown',e=>{
   if(!(e.ctrlKey||e.metaKey||e.altKey))return;
-  const m=/^Key([A-Z])$/.exec(e.code||'');
+  const m=/^Key([A-Z])$/.exec(e.code||'')||(e.keyCode>=65&&e.keyCode<=90?[0,String.fromCharCode(e.keyCode)]:null);
   if(!m||/^[a-z]$/i.test(e.key))return;
   Object.defineProperty(e,'key',{value:e.shiftKey?m[1]:m[1].toLowerCase()});
 },true);
@@ -4428,6 +4429,7 @@ document.addEventListener('keydown',e=>{
     if(e.key==='1'){e.preventDefault();setMode('read')}
     if(e.key==='2'){e.preventDefault();setMode('edit')}
     if(e.key==='3'){e.preventDefault();setMode('source')}
+    if((e.key==='e'||e.key==='E')&&!e.shiftKey&&!e.altKey){e.preventDefault();setMode(currentMode==='edit'?'read':'edit')}
     if(e.key==='f'||e.key==='F'){e.preventDefault();openFindBar(e.target)}
     if(e.shiftKey&&(e.key==='w'||e.key==='W')){e.preventDefault();setWide(!document.body.classList.contains('wide'))}
   }

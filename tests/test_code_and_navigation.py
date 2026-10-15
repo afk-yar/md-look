@@ -197,6 +197,19 @@ def test_shortcuts_work_on_russian_layout(browser, doc_url):
     assert '**' in pg.evaluate("document.getElementById('editor').value")
 
 
+def test_ctrl_e_toggles_edit_and_editor_is_not_bright_white(browser, doc_url):
+    pg = open_page(browser, doc_url)
+    press = """k=>document.querySelector('#reader').dispatchEvent(new KeyboardEvent('keydown',
+      {key:k,code:'KeyE',ctrlKey:true,bubbles:true,cancelable:true}))"""
+    pg.evaluate(press, 'у')  # Russian layout
+    assert pg.evaluate('currentMode') == 'edit'
+    bg = "getComputedStyle(document.getElementById('editor')).backgroundColor"
+    assert pg.evaluate(bg) == 'rgb(250, 249, 246)'
+    assert pg.evaluate("getComputedStyle(document.querySelector('.fmt-bar')).backgroundColor") == 'rgb(250, 249, 246)'
+    pg.evaluate("document.getElementById('editor').dispatchEvent(new KeyboardEvent('keydown',{key:'e',code:'KeyE',ctrlKey:true,bubbles:true,cancelable:true}))")
+    assert pg.evaluate('currentMode') == 'read'
+
+
 def test_md_preview_reads_title_and_first_lines(tmp_path):
     (tmp_path / 'sub').mkdir()
     (tmp_path / 'sub' / 'n.md').write_text(
