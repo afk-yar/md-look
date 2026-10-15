@@ -13,6 +13,7 @@ import tempfile
 import atexit
 import subprocess
 import threading
+import time
 import socket
 import hashlib
 import ctypes
@@ -560,6 +561,33 @@ def _file_url_to_path(url):
     return os.path.abspath(path)
 
 
+STATE_MAX_FILES = 300
+_STATE_LOCK = threading.Lock()
+
+
+def _state_path():
+    base = os.environ.get('APPDATA') or os.path.expanduser('~')
+    return os.path.join(base, 'MDLook', 'state.json')
+
+
+def _load_state():
+    try:
+        with open(_state_path(), 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_state(state):
+    path = _state_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(state, f, ensure_ascii=False)
+    os.replace(tmp, path)
+
+
 class Api:
     """Python functions exposed to JavaScript via window.pywebview.api"""
 
@@ -750,6 +778,53 @@ class Api:
             return {'ok': True, 'action': 'system', 'path': path}
         except Exception as e:
             return {'ok': False, 'reason': str(e), 'path': path}
+
+    def state_get(self, key):
+        """Read a value from the persistent reader state (zoom, per-file scroll and block hashes)."""
+        return _load_state().get(str(key))
+
+    def state_set(self, key, value):
+        """Write a value into the persistent reader state. Per-file entries are capped."""
+        with _STATE_LOCK:
+            state = _load_state()
+            key = str(key)
+            if value is None:
+                state.pop(key, None)
+            else:
+                if isinstance(value, dict):
+                    value = dict(value, t=time.time())
+                state[key] = value
+            files = sorted((k for k in state if k.startswith('file:')),
+                           key=lambda k: (state[k] or {}).get('t', 0) if isinstance(state[k], dict) else 0)
+            for k in files[:-STATE_MAX_FILES]:
+                state.pop(k, None)
+            _save_state(state)
+        return True
+
+    def open_path(self, text, base_folder=None):
+        """Open a path written in inline code: Markdown in MDLook, a folder in Explorer,
+        any other file is only revealed in Explorer (never executed)."""
+        raw = str(text or '').strip().strip('"\'')
+        raw = re.sub(r':\d+(?:-\d+)?$', '', raw)  # drop a trailing :line or :start-end
+        if not raw:
+            return {'ok': False, 'reason': 'empty'}
+        if _is_windows_absolute_path(raw) or os.path.isabs(raw):
+            path = os.path.abspath(raw)
+        else:
+            base = base_folder or (os.path.dirname(self._current_path) if self._current_path else '')
+            if not base:
+                return {'ok': False, 'reason': 'not found', 'path': raw}
+            path = os.path.abspath(os.path.join(base, raw))
+        if os.path.isdir(path):
+            subprocess.Popen(['explorer', path])
+            return {'ok': True, 'action': 'folder', 'path': path}
+        if not os.path.isfile(path):
+            return {'ok': False, 'reason': 'not found', 'path': path}
+        if _is_markdown_document(path):
+            _create_window(path)
+            return {'ok': True, 'action': 'mdlook', 'path': path}
+        subprocess.Popen(['explorer', '/select,', path])
+        return {'ok': True, 'action': 'reveal', 'path': path}
 
     def reload_file(self, force=False):
         """Re-read the current file from disk if it changed (or always if force=True).
@@ -1121,6 +1196,7 @@ BRIDGE_JS = """
     }
 
     window.mdlookGotoTarget = function(target){
+      window.mdlookGotoUsed = true;  // an explicit jump wins over the remembered reading position
       var attemptsLeft = 10;
       function attempt(){
         if(mdlookGotoTargetNow(target)) return;
