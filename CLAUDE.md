@@ -1,5 +1,7 @@
 # Project Notes
 
+Tauri port (prototype and migration plan): `E:\_Проекты\pet\md-look-tauri`. It loads this project's template and bridge by path, so changes here reach it.
+
 ## Build Artifacts
 
 - When work changes `app.py`, bundled assets, or anything affecting `MDLook.exe`, finish by rebuilding the folder distribution with:
