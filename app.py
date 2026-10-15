@@ -826,6 +826,56 @@ class Api:
         subprocess.Popen(['explorer', '/select,', path])
         return {'ok': True, 'action': 'reveal', 'path': path}
 
+    def md_preview(self, target, base_folder=None):
+        """Title and first lines of a linked Markdown file for the hover card.
+        A relative path is resolved against the document folder; front matter and code fences are skipped."""
+        raw = str(target or '').strip()
+        if not raw or raw.startswith('#'):
+            return {'ok': False, 'reason': 'empty'}
+        if raw.lower().startswith('file:'):
+            path = _file_url_to_path(raw.split('#', 1)[0])
+        else:
+            raw = urllib.parse.unquote(raw.split('#', 1)[0])
+            if _is_windows_absolute_path(raw) or os.path.isabs(raw):
+                path = os.path.abspath(raw)
+            else:
+                base = base_folder or (os.path.dirname(self._current_path) if self._current_path else '')
+                if not base:
+                    return {'ok': False, 'reason': 'not found', 'path': raw}
+                path = os.path.abspath(os.path.join(base, raw))
+        if not os.path.isfile(path) or not _is_markdown_document(path):
+            return {'ok': False, 'reason': 'not found', 'path': path}
+        try:
+            with open(path, 'r', encoding='utf-8-sig', errors='replace') as f:
+                lines = f.read(65536).splitlines()
+        except OSError as e:
+            return {'ok': False, 'reason': str(e), 'path': path}
+        if lines and lines[0].strip() == '---':
+            for i in range(1, len(lines)):
+                if lines[i].strip() in ('---', '...'):
+                    lines = lines[i + 1:]
+                    break
+        title, body, fence = '', [], False
+        for line in lines:
+            s = line.strip()
+            if s.startswith(('```', '~~~')):
+                fence = not fence
+                continue
+            if fence or not s or re.fullmatch(r'(?:-{3,}|\*{3,}|_{3,})', s):
+                continue
+            s = re.sub(r'!?\[([^\]]*)\]\([^)]*\)', r'\1', s)  # links and images keep their text
+            s = re.sub(r'\*\*|__|`', '', s)
+            m = re.match(r'#{1,6}\s+(.*?)\s*#*$', s)
+            if m and not title and not body:
+                title = m.group(1)
+                continue
+            s = re.sub(r'^(?:#{1,6}\s+|>\s?|[-*+]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+)', '', s).strip()
+            if s:
+                body.append(s[:200])
+            if len(body) == 4:
+                break
+        return {'ok': True, 'title': title or os.path.basename(path), 'lines': body, 'path': path}
+
     def reload_file(self, force=False):
         """Re-read the current file from disk if it changed (or always if force=True).
 
