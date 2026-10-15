@@ -3247,7 +3247,7 @@ function updateFileChrome(name,path,label){
 /* ── Theme ── */
 const saved=localStorage.getItem('mdv-theme');
 if(saved==='dark')document.body.setAttribute('data-theme','dark');
-$('#thm').addEventListener('click',()=>{const d=document.body.getAttribute('data-theme')==='dark';document.body.setAttribute('data-theme',d?'':'dark');localStorage.setItem('mdv-theme',d?'light':'dark');$('#thm').innerHTML=d?'&#x1F319;':'&#x2600;&#xFE0F;';mermaidReady=false;if($('#reader').style.display!=='none'){$('#readerContent').innerHTML=parseMd(rawMd);wrapCollapsible($('#readerContent'));renderMath($('#readerContent'));renderMermaid($('#readerContent'));wireCopy('#readerContent');buildOutline()}if($('#editorWrap').classList.contains('active'))updatePreview()});
+$('#thm').addEventListener('click',()=>{const d=document.body.getAttribute('data-theme')==='dark';document.body.setAttribute('data-theme',d?'':'dark');localStorage.setItem('mdv-theme',d?'light':'dark');$('#thm').innerHTML=d?'&#x1F319;':'&#x2600;&#xFE0F;';mermaidReady=false;if($('#reader').style.display!=='none'){$('#readerContent').innerHTML=parseMd(rawMd);wrapCollapsible($('#readerContent'));renderMath($('#readerContent'));renderMermaid($('#readerContent'));wireCopy('#readerContent');buildOutline();afterReaderRender()}if($('#editorWrap').classList.contains('active'))updatePreview()});
 if(saved==='dark')$('#thm').innerHTML='&#x2600;&#xFE0F;';
 
 /* ── Width toggle ── */
@@ -4425,6 +4425,13 @@ async function afterReaderRender(){
   mdDocState[key]={blocks,scroll:first?(saved.scroll||0):Math.round($('#reader').scrollTop)};
   mdState.set(key,mdDocState[key]);
 }
+
+// Theme: the app window does not keep localStorage between runs, so the choice also goes to the app state
+mdApiReady.then(()=>mdState.get('theme')).then(t=>{
+  const dark=document.body.getAttribute('data-theme')==='dark';
+  if((t==='dark')!==dark&&(t==='dark'||t==='light'))$('#thm').click();
+});
+$('#thm').addEventListener('click',()=>mdState.set('theme',document.body.getAttribute('data-theme')==='dark'?'dark':'light'));
 
 // Text zoom: Ctrl + / Ctrl - / Ctrl 0 and Ctrl + wheel scale the document text, remembered
 const MD_ZOOMS=[.8,.9,1,1.1,1.2,1.3,1.4,1.5];

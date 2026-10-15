@@ -105,6 +105,14 @@ def test_reading_position_restored_on_reopen(browser, doc_url):
     assert abs(pg2.evaluate("document.querySelector('#reader').scrollTop") - 1500) <= 2
 
 
+def test_theme_switch_keeps_code_actions_and_is_remembered(browser, doc_url):
+    pg = open_page(browser, doc_url)
+    pg.click('#thm')
+    pg.wait_for_timeout(300)
+    assert pg.evaluate("document.querySelectorAll('#readerContent code.md-path').length") == 3
+    assert pg.evaluate("localStorage.getItem('mdlook:theme')") == '"dark"'
+
+
 def test_table_header_is_sticky(browser, doc_url):
     pg = open_page(browser, doc_url)
     assert pg.evaluate("getComputedStyle(document.querySelector('#readerContent thead th')).position") == 'sticky'
