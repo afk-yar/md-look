@@ -6,6 +6,9 @@ Minimizes to system tray on close for instant re-open.
 Single-instance: second launch signals the first to show its window.
 """
 
+import time as _t_time
+_T_PY_START = _t_time.time()
+
 import sys
 import os
 import json
@@ -22,6 +25,78 @@ import re
 import urllib.parse
 import urllib.request
 import webbrowser
+
+# ── Startup timing (MDLOOK_TIMING=1): stage marks appended to %TEMP%\mdlook-timing.log ──
+_TIMING_ON = os.environ.get('MDLOOK_TIMING') == '1'
+_timing_marks = [('py_start', _T_PY_START)]
+_timing_written = False
+
+
+def _tmark(name):
+    if _TIMING_ON:
+        _timing_marks.append((name, time.time()))
+
+
+def _process_start_time():
+    """Creation time of this process, Unix epoch seconds."""
+    k32 = ctypes.WinDLL('kernel32')
+    k32.GetCurrentProcess.restype = ctypes.wintypes.HANDLE
+    k32.GetProcessTimes.argtypes = [ctypes.wintypes.HANDLE] + [ctypes.POINTER(ctypes.wintypes.FILETIME)] * 4
+    times = [ctypes.wintypes.FILETIME() for _ in range(4)]
+    k32.GetProcessTimes(k32.GetCurrentProcess(), *[ctypes.byref(t) for t in times])
+    created = (times[0].dwHighDateTime << 32) | times[0].dwLowDateTime
+    return created / 1e7 - 11644473600
+
+
+def _timing_write(js_marks):
+    """Write one JSON line: ms since process creation for every mark."""
+    global _timing_written
+    if not _TIMING_ON or _timing_written:
+        return
+    _timing_written = True
+    t0 = _process_start_time()
+    marks = list(_timing_marks) + [(k, v / 1000.0) for k, v in js_marks if v]
+    record = {
+        'when': time.strftime('%Y-%m-%d %H:%M:%S'),
+        'argv': sys.argv[1:],
+        'marks': {k: round((v - t0) * 1000) for k, v in marks},
+    }
+    try:
+        with open(os.path.join(tempfile.gettempdir(), 'mdlook-timing.log'), 'a', encoding='utf-8') as f:
+            f.write(json.dumps(record, ensure_ascii=False) + '\n')
+    except Exception:
+        pass
+
+
+def _timing_patch_webview():
+    """Mark .NET load and WebView2 init stages inside pywebview (timing mode only)."""
+    _tmark('guilib_import_start')
+    import webview.platforms.winforms  # noqa: F401  loads pythonnet/.NET; webview.start imports it anyway
+    from webview.platforms import edgechromium as ec
+    _tmark('guilib_import')
+
+    def wrap(name, label, numbered=False):
+        orig = getattr(ec.EdgeChrome, name)
+        count = [0]
+
+        def wrapped(self, *a, **k):
+            count[0] += 1
+            tag = '%s_%d' % (label, count[0]) if numbered else label
+            if numbered or count[0] == 1:
+                _tmark(tag + '_in')
+            result = orig(self, *a, **k)
+            if numbered or count[0] == 1:
+                _tmark(tag + '_out')
+            return result
+        setattr(ec.EdgeChrome, name, wrapped)
+
+    wrap('__init__', 'webview2_ctor')
+    wrap('on_webview_ready', 'webview2_ready')
+    wrap('on_navigation_start', 'nav_start', numbered=True)
+    wrap('on_navigation_completed', 'nav_done', numbered=True)
+
+
+_tmark('stdlib_imports')
 
 # ── Short path for pythonnet DLL ──
 _base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
@@ -47,8 +122,10 @@ for _root, _dirs, _files in os.walk(_base):
                 os.remove(os.path.join(_root, _fn + ':Zone.Identifier'))
             except OSError:
                 pass
+_tmark('zone_identifier')
 
 import webview
+_tmark('import_webview')
 
 
 def _force_foreground():
@@ -604,6 +681,30 @@ class Api:
         """Get the webview window reliably."""
         return self._window
 
+    def initial_document(self):
+        """Document the host page shows when it (re)loads: the current file, else example.md."""
+        path = self._current_path
+        if path and os.path.isfile(path):
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                self._file_mtime = os.path.getmtime(path)
+                return {'ok': True, 'content': content, 'name': os.path.basename(path),
+                        'path': os.path.abspath(path)}
+            except Exception:
+                pass
+        example = os.path.join(
+            getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__))), 'example.md')
+        try:
+            with open(example, 'r', encoding='utf-8') as f:
+                return {'ok': True, 'content': f.read(), 'name': 'example.md', 'path': ''}
+        except Exception:
+            return {'ok': True, 'content': '', 'name': '', 'path': ''}
+
+    def timing_js(self, marks):
+        """Receive page-side startup marks ([name, epoch_ms] pairs) when MDLOOK_TIMING=1."""
+        _timing_write(marks)
+
     def _update_window_title(self):
         w = self._get_window()
         if not w or not self._current_path:
@@ -922,6 +1023,22 @@ BRIDGE_JS = """
 <script>
 (function(){
   function initBridge(){
+    var bridgeAt = Date.now(), docAt = 0;
+    function sendTiming(){
+      if(!window.__mdlookTiming) return;
+      var pt = performance.timing;
+      requestAnimationFrame(function(){ requestAnimationFrame(function(){
+        window.pywebview.api.timing_js([
+          ['js_navigation_start', pt.navigationStart],
+          ['js_dom_interactive', pt.domInteractive],
+          ['js_dom_content_loaded', pt.domContentLoadedEventEnd],
+          ['js_load', pt.loadEventEnd],
+          ['js_bridge_ready', bridgeAt],
+          ['js_document_applied', docAt],
+          ['js_painted', Date.now()]
+        ]);
+      }); });
+    }
     var folderNavCache = null;
     var folderNavCachePath = null;
 
@@ -943,15 +1060,17 @@ BRIDGE_JS = """
       else document.title = (hasUnsaved ? '\\u25cf ' : '') + (fileName || 'MDLook') + ' \\u2014 MDLook';
     }
 
-    function applyDocumentResult(res){
+    function applyDocumentResult(res, initial){
       if(!res || res.ok === false || typeof res.content !== 'string') return false;
       rawMd = typeof res.content === 'string' ? res.content : '';
       hasUnsaved = false;
       document.body.classList.remove('unsaved');
       updateFileChrome(res.name || fileName, res.path || '');
+      if(window.setFolderSection) window.setFolderSection(res.path ? folderFromPath(res.path) : '');
       var ed = document.querySelector('#editor');
       if(ed) ed.value = rawMd;
-      clearAutoSave();
+      // The first document of a window is not a replacement: keep a draft saved by an untitled window.
+      if(!initial) clearAutoSave();
       if(window._mdlookResetSearch) window._mdlookResetSearch();
       setMode('read');
       return true;
@@ -1710,6 +1829,18 @@ BRIDGE_JS = """
         }
       }, true);
     })();
+
+    // ── Host page: the template carries no document, ask Python for this window's one ──
+    if(window.__mdlookHost && !window.__mdlookDocumentRequested){
+      window.__mdlookDocumentRequested = true;
+      window.pywebview.api.initial_document().then(function(res){
+        applyDocumentResult(res, true);
+        docAt = Date.now();
+        sendTiming();
+      });
+    } else {
+      sendTiming();
+    }
   }
 
   if(window.pywebview && window.pywebview.api) initBridge();
@@ -1729,6 +1860,60 @@ border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 16px}
 @keyframes spin{to{transform:rotate(360deg)}}
 p{font-size:.9rem;opacity:.6}
 </style></head><body><div class="loader"><div class="spinner"></div><p>Loading…</p></div></body></html>"""
+
+
+PAGE_CACHE_DIR = os.path.join(os.environ.get('LOCALAPPDATA') or tempfile.gettempdir(), 'MDLook', 'page-cache')
+PAGE_CACHE_MAX_AGE = 30 * 24 * 3600
+_host_page_lock = threading.Lock()
+_host_page = None
+
+
+def _host_page_path():
+    """Template + bridge without a document, shared by all windows and written once per template version.
+
+    Windows load it and fetch their document via Api.initial_document, so opening a window
+    no longer rewrites the 7.6 MB template.
+    """
+    global _host_page
+    with _host_page_lock:
+        if _host_page and os.path.isfile(_host_page):
+            return _host_page
+        timing_js = '<script>window.__mdlookTiming=1;</script>\n' if _TIMING_ON else ''
+        st = os.stat(TEMPLATE_PATH)
+        key = hashlib.sha1(
+            ('%d:%d\n' % (st.st_size, st.st_mtime_ns) + timing_js + BRIDGE_JS).encode('utf-8')
+        ).hexdigest()[:16]
+        path = os.path.join(PAGE_CACHE_DIR, 'page-%s.html' % key)
+        if not os.path.isfile(path):
+            with open(TEMPLATE_PATH, 'r', encoding='utf-8') as f:
+                html = f.read()
+            head = html.find('<head>')
+            if head != -1:
+                head += len('<head>')
+                html = html[:head] + '<script>window.__mdlookHost=1;</script>' + html[head:]
+            last_body = html.rfind('</body>')
+            if last_body != -1:
+                html = html[:last_body] + '\n' + timing_js + BRIDGE_JS + '\n</body>' + html[last_body + 7:]
+            os.makedirs(PAGE_CACHE_DIR, exist_ok=True)
+            tmp = '%s.%d.tmp' % (path, os.getpid())
+            with open(tmp, 'w', encoding='utf-8') as f:
+                f.write(html)
+            os.replace(tmp, path)
+            # Old versions may still be open in another MDLook copy, so only drop long-unused ones.
+            now = time.time()
+            for name in os.listdir(PAGE_CACHE_DIR):
+                old = os.path.join(PAGE_CACHE_DIR, name)
+                try:
+                    if old != path and now - os.path.getmtime(old) > PAGE_CACHE_MAX_AGE:
+                        os.remove(old)
+                except OSError:
+                    pass
+        _host_page = path
+        return path
+
+
+def _host_page_url():
+    return 'file:///' + _host_page_path().replace('\\', '/')
 
 
 def build_html(md_content, md_name, md_folder):
@@ -1754,7 +1939,8 @@ def build_html(md_content, md_name, md_folder):
     # Inject bridge JS before </body>
     last_body = html.rfind('</body>')
     if last_body != -1:
-        html = html[:last_body] + '\n' + BRIDGE_JS + '\n</body>' + html[last_body + 7:]
+        timing_js = '<script>window.__mdlookTiming=1;</script>\n' if _TIMING_ON else ''
+        html = html[:last_body] + '\n' + timing_js + BRIDGE_JS + '\n</body>' + html[last_body + 7:]
 
     fd, path = tempfile.mkstemp(suffix='.html', prefix='mdlook_')
     with os.fdopen(fd, 'w', encoding='utf-8') as f:
@@ -1971,40 +2157,23 @@ def _create_window(filepath=None, target=None):
     """
     api_inst = Api()
 
-    md_content = ''
-    md_name = ''
+    md_name = 'example.md'
     md_folder = ''
-
     if filepath and os.path.isfile(filepath):
+        md_name = os.path.basename(filepath)
+        md_folder = os.path.dirname(os.path.abspath(filepath))
+        api_inst._current_path = filepath
         try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                md_content = f.read()
-            md_name = os.path.basename(filepath)
-            md_folder = os.path.dirname(os.path.abspath(filepath))
-            api_inst._current_path = filepath
             api_inst._file_mtime = os.path.getmtime(filepath)
-        except Exception:
+        except OSError:
             pass
-    else:
-        _example = os.path.join(
-            getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__))),
-            'example.md'
-        )
-        if os.path.isfile(_example):
-            try:
-                with open(_example, 'r', encoding='utf-8') as f:
-                    md_content = f.read()
-                md_name = 'example.md'
-            except Exception:
-                pass
 
-    html_path = build_html(md_content, md_name, md_folder)
-    file_url = 'file:///' + html_path.replace('\\', '/')
+    # The page fetches the document itself through Api.initial_document
     title = _format_window_title(filename=md_name, folder=md_folder)
 
     window = webview.create_window(
         title,
-        url=file_url,
+        url=_host_page_url(),
         js_api=api_inst,
         width=960,
         height=720,
@@ -2013,7 +2182,7 @@ def _create_window(filepath=None, target=None):
     )
     api_inst._window = window
 
-    entry = {'window': window, 'api': api_inst, 'temp_html': html_path}
+    entry = {'window': window, 'api': api_inst, 'temp_html': None}  # shared host page is not per-window
     with _windows_lock:
         _windows.append(entry)
 
@@ -2027,6 +2196,7 @@ def on_loaded():
     """Called after the window is shown — build the heavy template and navigate."""
 
     def _load():
+        _tmark('on_loaded')
         with _windows_lock:
             first_entry = _windows[0] if _windows else None
         if first_entry is None:
@@ -2042,39 +2212,25 @@ def on_loaded():
             except Exception:
                 pass
 
-        md_content = ''
-        md_name = ''
+        md_name = 'example.md'
         md_folder = ''
 
         arg = _get_file_arg()
         target = _get_goto_arg()
         if arg and os.path.isfile(arg):
-            with open(arg, 'r', encoding='utf-8') as f:
-                md_content = f.read()
             md_name = os.path.basename(arg)
             md_folder = os.path.dirname(os.path.abspath(arg))
             api_inst._current_path = arg
             api_inst._file_mtime = os.path.getmtime(arg)
-        else:
-            # Load example.md
-            _example = os.path.join(
-                getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__))),
-                'example.md'
-            )
-            if os.path.isfile(_example):
-                with open(_example, 'r', encoding='utf-8') as f:
-                    md_content = f.read()
-                md_name = 'example.md'
 
-        html_path = build_html(md_content, md_name, md_folder)
-        # Update temp_html reference for this window's entry
-        with _windows_lock:
-            if _windows and _windows[0]['window'] is w:
-                _windows[0]['temp_html'] = html_path
-        file_url = 'file:///' + html_path.replace('\\', '/')
+        # The page fetches the document itself through Api.initial_document
+        _tmark('host_page_start')
+        file_url = _host_page_url()
+        _tmark('host_page_end')
 
         title = _format_window_title(filename=md_name, folder=md_folder)
 
+        _tmark('load_url')
         w.load_url(file_url)
         w.set_title(title)
         _goto_target_async(w, target)
@@ -2087,9 +2243,11 @@ def main():
     # ── Main ──
     if _signal_existing_instance():
         sys.exit(0)
+    _tmark('ipc_check')
 
     _start_ipc_listener()
     _setup_tray()
+    _tmark('tray')
 
     api = Api()
 
@@ -2116,6 +2274,18 @@ def main():
         _windows.append(entry)
 
     window.events.closing += _make_on_closing(window)
+
+    if _TIMING_ON:
+        _loaded_count = [0]
+
+        def _on_timing_loaded():
+            _loaded_count[0] += 1
+            _tmark('page_loaded_%d' % _loaded_count[0])
+
+        window.events.shown += lambda: _tmark('window_shown')
+        window.events.loaded += _on_timing_loaded
+        _timing_patch_webview()
+    _tmark('webview_start')
 
     webview.start(func=on_loaded, gui='edgechromium', debug=False)
 

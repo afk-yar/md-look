@@ -27,6 +27,7 @@ def _make_webview_stub():
     def _create_window(title='', url='', js_api=None, **kwargs):
         w = MagicMock(name='WebviewWindow')
         w.title = title
+        w.url = url
         # events.closing behaves like a list of callables
         closing_handlers = []
         w.events = MagicMock()
@@ -97,6 +98,14 @@ import app  # noqa: E402  (after stubs)
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def isolate_host_page(tmp_path):
+    """Keep the shared host page out of the real %LOCALAPPDATA% cache and rebuild it per test."""
+    with patch.object(app, 'PAGE_CACHE_DIR', str(tmp_path / 'page-cache')), \
+         patch.object(app, '_host_page', None):
+        yield
+
 
 @pytest.fixture(autouse=True)
 def reset_app_state():

@@ -431,8 +431,8 @@ class TestWindowLifecycle:
         assert result is True
         window.hide.assert_not_called()
 
-    def test_temp_file_removed_on_non_last_window_close(self, patch_template, tmp_path):
-        """Closing non-last window → temp HTML file deleted."""
+    def test_shared_host_page_survives_non_last_window_close(self, patch_template, tmp_path):
+        """Windows share one host page; closing one of them must not delete it."""
         md1 = tmp_path / 'a.md'
         md2 = tmp_path / 'b.md'
         md1.write_text('# A', encoding='utf-8')
@@ -442,16 +442,40 @@ class TestWindowLifecycle:
         app._create_window(str(md2))
 
         with app._windows_lock:
-            entry1 = app._windows[0]
-        temp_html_path = entry1['temp_html']
-        window1 = entry1['window']
+            entry1, entry2 = app._windows[0], app._windows[1]
+        page = app._host_page_path()
+        assert entry1['window'].url == entry2['window'].url == app._host_page_url()
 
-        assert os.path.isfile(temp_html_path)
+        entry1['window']._closing_handlers[0]()
 
-        closing_handler = window1._closing_handlers[0]
-        closing_handler()
+        assert os.path.isfile(page)
+        app._create_window(str(md1))
+        assert os.path.isfile(page)
 
-        assert not os.path.isfile(temp_html_path)
+    def test_host_page_written_once(self, patch_template):
+        """The template is read and written once, then reused by every window."""
+        first = app._host_page_path()
+        mtime = os.path.getmtime(first)
+        with patch('builtins.open', side_effect=AssertionError('template re-read')):
+            assert app._host_page_path() == first
+        assert os.path.getmtime(first) == mtime
+        html = open(first, encoding='utf-8').read()
+        assert app.BRIDGE_JS.strip() in html
+
+    def test_initial_document_reads_current_file(self, tmp_path):
+        """The host page gets the window's file; after an in-window switch it gets the new one."""
+        md = tmp_path / 'doc.md'
+        md.write_text('# Привет </script>', encoding='utf-8')
+        api = app.Api()
+        api._current_path = str(md)
+        res = api.initial_document()
+        assert res == {'ok': True, 'content': '# Привет </script>', 'name': 'doc.md', 'path': str(md.resolve())}
+
+    def test_initial_document_falls_back_to_example(self, tmp_path, monkeypatch):
+        (tmp_path / 'example.md').write_text('# Example\n', encoding='utf-8')
+        monkeypatch.setattr(app, '__file__', str(tmp_path / 'app.py'))
+        res = app.Api().initial_document()
+        assert res['name'] == 'example.md' and res['content'] == '# Example\n' and res['path'] == ''
 
 
 # ===========================================================================
