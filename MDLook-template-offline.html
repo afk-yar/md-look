@@ -3453,7 +3453,7 @@ function setMode(mode){
   $('#outlineToggle').style.display='none';$('#collapseBtns').style.display='none';$('#btnWidth').style.visibility='visible';if(tp.active)tpStop();
   outlineOpen=false;$('#outlinePanel').classList.remove('open');
   if(mode==='read'){$('#reader').style.display='block';$('#readerContent').innerHTML=parseMd(rawMd);wrapCollapsible($('#readerContent'));renderMath($('#readerContent'));renderMermaid($('#readerContent'));wireCopy('#readerContent');$('#outlineToggle').style.display='';$('#collapseBtns').style.display='flex';buildOutline();afterReaderRender()}
-  else if(mode==='edit'){$('#editorWrap').classList.add('active');$('#editor').value=rawMd;updatePreview();updateStats();$('#btnSave').style.visibility='visible';$('#outlineToggle').style.display='';$('#btnWidth').style.visibility='hidden';setTimeout(()=>{$('#editor').focus();$('#editor').setSelectionRange(0,0);$('#editor').scrollTop=0},50)}
+  else if(mode==='edit'){$('#editorWrap').classList.add('active');$('#editor').value=rawMd;updatePreview();updateStats();$('#btnSave').style.visibility='visible';$('#outlineToggle').style.display='';$('#btnWidth').style.visibility='hidden';setTimeout(mdPlaceEditorCaret,50)}
   else if(mode==='source'){$('#rawSource').classList.add('v');$('#rawSource').querySelector('pre').textContent=rawMd}
 }
 
@@ -3636,7 +3636,7 @@ document.addEventListener('click',e=>{
 });
 $('#exportHTML').addEventListener('click',()=>{
   $('#exportMenu').classList.remove('open');
-  const content=parseMd(rawMd||$('#editor')?.value||'');
+  const content=parseMd(rawMd||$('#editor')?.value||'').replace(/ data-line="\d+"/g,'');
   const css=document.querySelector('style').textContent;
   const theme=document.body.getAttribute('data-theme')||'';
   const embeddedStyles=['embedded-fonts','embedded-katex-css'].map(id=>document.getElementById(id)?.outerHTML||'').join('');
@@ -4276,7 +4276,7 @@ document.addEventListener('keydown',e=>{
     if(e.key==='1'){e.preventDefault();setMode('read')}
     if(e.key==='2'){e.preventDefault();setMode('edit')}
     if(e.key==='3'){e.preventDefault();setMode('source')}
-    if((e.key==='e'||e.key==='E')&&!e.shiftKey&&!e.altKey){e.preventDefault();setMode(currentMode==='edit'?'read':'edit')}
+    if((e.key==='e'||e.key==='E')&&!e.shiftKey&&!e.altKey){e.preventDefault();mdToggleEditKeepPlace()}
     if(e.key==='f'||e.key==='F'){e.preventDefault();openFindBar(e.target)}
     if(e.shiftKey&&(e.key==='w'||e.key==='W')){e.preventDefault();setWide(!document.body.classList.contains('wide'))}
   }
@@ -4533,6 +4533,74 @@ async function mdShowCard(a,seq){
 ['#reader','#preview'].forEach(s=>$(s).addEventListener('scroll',()=>{if(mdCardLink)mdHideCard()},{passive:true}));
 document.addEventListener('mousedown',()=>{if(mdCardLink)mdHideCard()},true);
 
+/* ── Ctrl+E keeps the place: Read selection or top block -> editor selection, editor caret -> Read block ── */
+let mdPendingCaret=null;
+function mdLineOffsets(text){const o=[0];for(let i=0;i<text.length;i++)if(text.charCodeAt(i)===10)o.push(i+1);return o}
+function mdSourceRx(t){return new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/\s+/g,'\\s+'),'g')}
+function mdPlaceFromReader(){
+  const root=$('#readerContent'),text=rawMd.replace(/\r\n?/g,'\n'),offs=mdLineOffsets(text);
+  const lines=[...root.querySelectorAll('[data-line]')].map(e=>+e.dataset.line);
+  const sel=window.getSelection();
+  let blk=null,word='',rx=null,nth=0;
+  if(sel&&!sel.isCollapsed&&sel.rangeCount&&root.contains(sel.anchorNode)){
+    const range=sel.getRangeAt(0),sc=range.startContainer;
+    blk=(sc.nodeType===1?sc:sc.parentElement).closest('[data-line]');
+    if(blk&&!root.contains(blk))blk=null;
+    word=sel.toString().trim();
+    if(blk&&word){
+      rx=mdSourceRx(word);
+      const pre=document.createRange();pre.setStart(blk,0);pre.setEnd(sc,range.startOffset);
+      nth=(pre.toString().match(rx)||[]).length;
+    }
+  }
+  if(!blk){
+    const top=$('#reader').getBoundingClientRect().top+4;
+    blk=[...root.querySelectorAll('[data-line]')].find(e=>{const r=e.getBoundingClientRect();return (r.width||r.height)&&r.bottom>top})||null;
+    rx=null;
+  }
+  let s=0,e=0;
+  if(blk){
+    const ln=Math.min(+blk.dataset.line,offs.length-1);
+    s=e=offs[ln];
+    if(rx){
+      let end=offs.length;lines.forEach(x=>{if(x>ln&&x<end)end=x});
+      const src=text.slice(offs[ln],end<offs.length?offs[end]:text.length);
+      const ms=[...src.matchAll(rx)],m=ms[Math.min(nth,ms.length-1)];
+      if(m){s=offs[ln]+m.index;e=s+m[0].length}
+    }
+  }
+  mdPendingCaret={s,e};
+  setMode('edit');
+}
+function mdPlaceEditorCaret(){
+  const ed=$('#editor'),pc=mdPendingCaret;mdPendingCaret=null;
+  ed.focus();
+  if(!pc){ed.setSelectionRange(0,0);ed.scrollTop=0;return}
+  const full=ed.value,s=Math.min(pc.s,full.length),e=Math.min(pc.e,full.length);
+  // height of the text before the caret, wrapped lines included: measure the textarea with the text cut there
+  const h0=ed.style.height;ed.style.height='1px';ed.value=full.slice(0,s);const y=ed.scrollHeight;ed.value=full;ed.style.height=h0;
+  ed.setSelectionRange(s,e);
+  ed.scrollTop=Math.max(0,y-ed.clientHeight/3);
+  const ln=full.slice(0,s).split('\n').length-1,pv=$('#preview');
+  const p=[...pv.querySelectorAll('[data-line]')].filter(x=>+x.dataset.line<=ln).pop();
+  if(p)pv.scrollTop+=p.getBoundingClientRect().top-pv.getBoundingClientRect().top-16;
+}
+function mdPlaceFromEditor(){
+  const ed=$('#editor'),ln=ed.value.slice(0,ed.selectionStart).split('\n').length-1;
+  setMode('read');
+  const root=$('#readerContent');let best=null,bl=-1;
+  root.querySelectorAll('[data-line]').forEach(el=>{const n=+el.dataset.line;if(n<=ln&&n>=bl){best=el;bl=n}});
+  if(!best)return;
+  let sec=best.closest('.md-section');
+  while(sec){sec.classList.remove('collapsed');sec=sec.parentElement?sec.parentElement.closest('.md-section'):null}
+  const r=$('#reader');r.scrollTop+=best.getBoundingClientRect().top-r.getBoundingClientRect().top-16;
+}
+function mdToggleEditKeepPlace(){
+  if(currentMode==='read')mdPlaceFromReader();
+  else if(currentMode==='edit')mdPlaceFromEditor();
+  else setMode('edit');
+}
+
 async function afterReaderRender(){
   const root=$('#readerContent'),seq=++mdRenderSeq;
   mdEnhance(root);
@@ -4714,7 +4782,8 @@ function parseInline(t){
   }
   return t;
 }
-function parseMd(md){
+function parseMd(md,base){
+  base=base||0;  // line number of the first line: blocks carry data-line (their source line)
   // Pre-process: protect fenced code blocks from footnote/math/escape extraction
   const _cbStore=[];
   md=md.replace(/^([`~]{3,})([\w]*)\n([\s\S]*?)\n\1\s*$/gm,function(m){
@@ -4735,10 +4804,10 @@ function parseMd(md){
   parseMd._footnotes=footnotes;
   // Pre-process: extract $$...$$ block math before line processing
   const blockMathStore=[];
-  md=md.replace(/^\$\$\s*\n([\s\S]*?)\n\$\$\s*$/gm,function(_,expr){
+  md=md.replace(/^\$\$\s*\n([\s\S]*?)\n\$\$\s*$/gm,function(m,expr){
     const idx=blockMathStore.length;
     blockMathStore.push(expr.trim());
-    return '%%BLOCKMATH'+idx+'%%';
+    return '%%BLOCKMATH'+idx+'%%'+'\n'.repeat((m.match(/\n/g)||[]).length);
   });
   // Also handle single-line $$...$$ 
   md=md.replace(/^\$\$(.+?)\$\$$/gm,function(_,expr){
@@ -4762,25 +4831,25 @@ function parseMd(md){
     const line=lines[i],tr=line.trimStart();
     if(tr==='[TOC]'||tr==='[toc]'){cl();html+='%%TOC%%';i++;continue}
     const cm=tr.match(/^([`~]{3,})\s*([^\s`~]*)/);
-    if(cm){cl();const fence=cm[1];const fenceChar=fence[0];const lang=cm[2]||'code';let cc='';i++;while(i<lines.length){const lt=lines[i].trimStart();if(lt.startsWith(fence)&&lt.replace(new RegExp('['+fenceChar+']','g'),'').trim()==='')break;cc+=(lang==='mermaid'?lines[i]:esc(lines[i]))+'\n';i++}i++;
-    if(lang==='mermaid'){html+='<div class="mermaid-wrap"><pre class="mermaid">'+cc.replace(/\n$/,'')+'</pre></div>'}
-    else{html+='<pre><div class="ch"><span>'+esc(lang)+'</span><button class="cp">Copy</button></div><code data-lang="'+esc(lang)+'">'+cc.replace(/\n$/,'')+'</code></pre>'}
+    if(cm){cl();const st=base+i;const fence=cm[1];const fenceChar=fence[0];const lang=cm[2]||'code';let cc='';i++;while(i<lines.length){const lt=lines[i].trimStart();if(lt.startsWith(fence)&&lt.replace(new RegExp('['+fenceChar+']','g'),'').trim()==='')break;cc+=(lang==='mermaid'?lines[i]:esc(lines[i]))+'\n';i++}i++;
+    if(lang==='mermaid'){html+='<div class="mermaid-wrap" data-line="'+st+'"><pre class="mermaid">'+cc.replace(/\n$/,'')+'</pre></div>'}
+    else{html+='<pre data-line="'+st+'"><div class="ch"><span>'+esc(lang)+'</span><button class="cp">Copy</button></div><code data-lang="'+esc(lang)+'">'+cc.replace(/\n$/,'')+'</code></pre>'}
     continue}
     if(tr===''||tr==='\r'){cl();i++;continue}
-    const hm=tr.match(/^(#{1,6})\s+(.+)/);if(hm){cl();const lvl=hm[1].length;const raw=hm[2].replace(/\s*#{1,6}\s*$/,'');const inl=parseInline(raw);const slug='h-'+headingCounter+'-'+slugify(raw);tocEntries.push({level:lvl,text:raw,slug:slug});html+='<h'+lvl+' id="'+slug+'">'+inl+'</h'+lvl+'>';headingCounter++;i++;continue}
-    if(/^(-{3,}|_{3,}|\*{3,})\s*$/.test(tr)){cl();html+='<hr>';i++;continue}
-    const bmm=tr.match(/^%%BLOCKMATH(\d+)%%$/);if(bmm){cl();html+='<div class="math-block" data-math="'+esc(blockMathStore[parseInt(bmm[1])])+'"></div>';i++;continue}
-    if(tr.startsWith('>')){cl();let ql=[];while(i<lines.length){const q=lines[i].trimStart();if(!q.startsWith('>'))break;ql.push(q.replace(/^>\s?/,''));i++}html+='<blockquote>'+parseMd(ql.join('\n'))+'</blockquote>';continue}
-    if(tr.includes('|')&&i+1<lines.length&&/^\s*\|?\s*[-:]+/.test(lines[i+1])){cl();const pr=r=>r.replace(/^\|/,'').replace(/\|$/,'').split('|').map(c=>c.trim());const hds=pr(tr),ar=pr(lines[i+1]),al=ar.map(c=>{if(c.startsWith(':')&&c.endsWith(':'))return'center';if(c.endsWith(':'))return'right';return'left'});let th='<table><thead><tr>';hds.forEach((h,j)=>th+='<th style="text-align:'+al[j]+'">'+parseInline(h)+'</th>');th+='</tr></thead><tbody>';i+=2;while(i<lines.length&&lines[i].trim()!==''&&lines[i].includes('|')){const cs=pr(lines[i]);th+='<tr>';cs.forEach((c,j)=>th+='<td style="text-align:'+(al[j]||'left')+'">'+parseInline(c)+'</td>');th+='</tr>';i++}th+='</tbody></table>';html+=th;continue}
+    const hm=tr.match(/^(#{1,6})\s+(.+)/);if(hm){cl();const lvl=hm[1].length;const raw=hm[2].replace(/\s*#{1,6}\s*$/,'');const inl=parseInline(raw);const slug='h-'+headingCounter+'-'+slugify(raw);tocEntries.push({level:lvl,text:raw,slug:slug});html+='<h'+lvl+' id="'+slug+'" data-line="'+(base+i)+'">'+inl+'</h'+lvl+'>';headingCounter++;i++;continue}
+    if(/^(-{3,}|_{3,}|\*{3,})\s*$/.test(tr)){cl();html+='<hr data-line="'+(base+i)+'">';i++;continue}
+    const bmm=tr.match(/^%%BLOCKMATH(\d+)%%$/);if(bmm){cl();html+='<div class="math-block" data-line="'+(base+i)+'" data-math="'+esc(blockMathStore[parseInt(bmm[1])])+'"></div>';i++;continue}
+    if(tr.startsWith('>')){cl();const st=base+i;let ql=[];while(i<lines.length){const q=lines[i].trimStart();if(!q.startsWith('>'))break;ql.push(q.replace(/^>\s?/,''));i++}html+='<blockquote data-line="'+st+'">'+parseMd(ql.join('\n'),st)+'</blockquote>';continue}
+    if(tr.includes('|')&&i+1<lines.length&&/^\s*\|?\s*[-:]+/.test(lines[i+1])){cl();const pr=r=>r.replace(/^\|/,'').replace(/\|$/,'').split('|').map(c=>c.trim());const hds=pr(tr),ar=pr(lines[i+1]),al=ar.map(c=>{if(c.startsWith(':')&&c.endsWith(':'))return'center';if(c.endsWith(':'))return'right';return'left'});let th='<table><thead><tr data-line="'+(base+i)+'">';hds.forEach((h,j)=>th+='<th style="text-align:'+al[j]+'">'+parseInline(h)+'</th>');th+='</tr></thead><tbody>';i+=2;while(i<lines.length&&lines[i].trim()!==''&&lines[i].includes('|')){const cs=pr(lines[i]);th+='<tr data-line="'+(base+i)+'">';cs.forEach((c,j)=>th+='<td style="text-align:'+(al[j]||'left')+'">'+parseInline(c)+'</td>');th+='</tr>';i++}th+='</tbody></table>';html+=th;continue}
     const lineIndent=line.length-line.trimStart().length;
-    const tm=tr.match(/^[-*]\s+\[([ xX])\]\s+(.*)/);if(tm){const ltype='tl';i++;const content='<input type="checkbox" '+(tm[1]!==' '?'checked ':'')+' disabled><span>'+parseInline(tm[2]+lazyCont())+'</span>';if(!inList){html+='<ul class="tl">';stk.push({type:'tl',indent:lineIndent});inList=true}else{const ci=stk[stk.length-1].indent;if(lineIndent>ci){html+='<ul class="tl">';stk.push({type:'tl',indent:lineIndent})}else if(lineIndent<ci){while(stk.length>1&&stk[stk.length-1].indent>lineIndent){const x=stk.pop();html+=x.type==='ol'?'</ol>':'</ul>'}}}html+='<li>'+content+'</li>';continue}
-    const um=tr.match(/^[-*+]\s+(.*)/);if(um){if(!inList){html+='<ul>';stk.push({type:'ul',indent:lineIndent});inList=true}else{const ci=stk[stk.length-1].indent;if(lineIndent>ci){html+='<ul>';stk.push({type:'ul',indent:lineIndent})}else if(lineIndent<ci){while(stk.length>1&&stk[stk.length-1].indent>lineIndent){const x=stk.pop();html+=x.type==='ol'?'</ol>':'</ul>'}}}i++;html+='<li>'+parseInline(um[1]+lazyCont())+'</li>';continue}
-    const om=tr.match(/^(\d+)\.\s+(.*)/);if(om){if(!inList){const s=parseInt(om[1]);html+=s!==1?'<ol start="'+s+'">':'<ol>';stk.push({type:'ol',indent:lineIndent});inList=true}else{const ci=stk[stk.length-1].indent;if(lineIndent>ci){html+='<ol>';stk.push({type:'ol',indent:lineIndent})}else if(lineIndent<ci){while(stk.length>1&&stk[stk.length-1].indent>lineIndent){const x=stk.pop();html+=x.type==='ol'?'</ol>':'</ul>'}}}i++;html+='<li>'+parseInline(om[2]+lazyCont())+'</li>';continue}
+    const tm=tr.match(/^[-*]\s+\[([ xX])\]\s+(.*)/);if(tm){const ltype='tl';const st=base+i;i++;const content='<input type="checkbox" '+(tm[1]!==' '?'checked ':'')+' disabled><span>'+parseInline(tm[2]+lazyCont())+'</span>';if(!inList){html+='<ul class="tl">';stk.push({type:'tl',indent:lineIndent});inList=true}else{const ci=stk[stk.length-1].indent;if(lineIndent>ci){html+='<ul class="tl">';stk.push({type:'tl',indent:lineIndent})}else if(lineIndent<ci){while(stk.length>1&&stk[stk.length-1].indent>lineIndent){const x=stk.pop();html+=x.type==='ol'?'</ol>':'</ul>'}}}html+='<li data-line="'+st+'">'+content+'</li>';continue}
+    const um=tr.match(/^[-*+]\s+(.*)/);if(um){if(!inList){html+='<ul>';stk.push({type:'ul',indent:lineIndent});inList=true}else{const ci=stk[stk.length-1].indent;if(lineIndent>ci){html+='<ul>';stk.push({type:'ul',indent:lineIndent})}else if(lineIndent<ci){while(stk.length>1&&stk[stk.length-1].indent>lineIndent){const x=stk.pop();html+=x.type==='ol'?'</ol>':'</ul>'}}}i++;html+='<li data-line="'+(base+i-1)+'">'+parseInline(um[1]+lazyCont())+'</li>';continue}
+    const om=tr.match(/^(\d+)\.\s+(.*)/);if(om){if(!inList){const s=parseInt(om[1]);html+=s!==1?'<ol start="'+s+'">':'<ol>';stk.push({type:'ol',indent:lineIndent});inList=true}else{const ci=stk[stk.length-1].indent;if(lineIndent>ci){html+='<ol>';stk.push({type:'ol',indent:lineIndent})}else if(lineIndent<ci){while(stk.length>1&&stk[stk.length-1].indent>lineIndent){const x=stk.pop();html+=x.type==='ol'?'</ol>':'</ul>'}}}i++;html+='<li data-line="'+(base+i-1)+'">'+parseInline(om[2]+lazyCont())+'</li>';continue}
     // Paragraph: source line wraps are soft breaks (joined with a space, as in CommonMark);
     // a line ending in two spaces or a backslash keeps a hard <br>
-    cl();let pl=[line];i++;while(i<lines.length){const nx=lines[i].trim();if(nx===''||nx.match(/^#{1,6}\s/)||nx.match(/^[-*+]\s/)||nx.match(/^\d+\.\s/)||nx.startsWith('>')||nx.startsWith('```')||nx.startsWith('~~~')||/^(-{3,}|_{3,}|\*{3,})\s*$/.test(nx))break;pl.push(lines[i]);i++}
+    cl();const pst=base+i;let pl=[line];i++;while(i<lines.length){const nx=lines[i].trim();if(nx===''||nx.match(/^#{1,6}\s/)||nx.match(/^[-*+]\s/)||nx.match(/^\d+\.\s/)||nx.startsWith('>')||nx.startsWith('```')||nx.startsWith('~~~')||/^(-{3,}|_{3,}|\*{3,})\s*$/.test(nx))break;pl.push(lines[i]);i++}
     const ptxt=pl.map((l,k)=>{const t=l.replace(/\r$/,'').trim();if(k===pl.length-1)return t;if(/ {2,}\r?$/.test(l))return t+'';if(/\\\r?$/.test(l))return t.slice(0,-1)+'';return t+' '}).join('');
-    html+='<p>'+parseInline(ptxt).replace(//g,'<br>')+'</p>';
+    html+='<p data-line="'+pst+'">'+parseInline(ptxt).replace(//g,'<br>')+'</p>';
   }
   cl();
   // Generate TOC if placeholder exists
