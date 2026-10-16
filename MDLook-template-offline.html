@@ -2503,8 +2503,9 @@ body:not([data-theme=dark]) .md pre code.language-bsl .token.query-string .token
 .math-block{text-align:center;padding:12px 0;overflow-x:auto}
 .math-inline .katex{font-size:1em}
 /* Collapse/expand all buttons */
-.collapse-btns{display:none;position:fixed;top:calc(var(--bar-h) + 56px);right:16px;z-index:50;gap:2px;flex-direction:column}
-.collapse-btn{background:var(--s);border:1px solid var(--b);border-radius:6px;cursor:pointer;padding:4px 8px;font-size:.62rem;color:var(--t2);font-family:'JetBrains Mono',monospace;transition:all .12s;box-shadow:var(--sh);white-space:nowrap}
+/* Fold-all and teleprompter live in the outline panel, not over the text */
+.collapse-btns{display:none;flex-wrap:wrap;gap:4px;margin:0 0 12px;padding-bottom:12px;border-bottom:1px solid var(--bl)}
+.collapse-btn{background:transparent;border:1px solid var(--b);border-radius:6px;cursor:pointer;padding:3px 8px;font-size:.72rem;color:var(--t2);font-family:inherit;transition:all .12s;white-space:nowrap}
 .collapse-btn:hover{border-color:var(--a);color:var(--a)}
 .tp-bar{display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:100;background:var(--s);border:1px solid var(--b);border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.12);padding:6px 10px;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--t2);animation:fadeModal .15s ease;user-select:none}
 .tp-bar.active{display:flex}
@@ -2589,7 +2590,11 @@ pre.md-changed{outline:2px solid var(--a);outline-offset:3px;animation:mdChgOutl
 .md-section-root>.md-section-head{cursor:auto}
 .md-section-root>.md-section-head::before{display:none}
 .md-section-head{cursor:pointer;position:relative;display:flex;align-items:baseline;gap:6px}
-.md-section-head::before{content:'';display:inline-block;width:0;height:0;border-left:5px solid var(--tm);border-top:4px solid transparent;border-bottom:4px solid transparent;transition:transform .2s;flex-shrink:0;margin-top:2px}
+/* Fold marker: in the left gutter on the heading's first line, shown on hover or when folded */
+.md-section-head{--hs:1}
+.md-section-head:has(>h1){--hs:1.7}.md-section-head:has(>h2){--hs:1.55}.md-section-head:has(>h3){--hs:1.31}.md-section-head:has(>h4){--hs:1.115}
+.md-section-head::before{content:'';position:absolute;left:-15px;top:calc(var(--hs)*.65em - 4px);width:0;height:0;border-left:6px solid var(--tm);border-top:4px solid transparent;border-bottom:4px solid transparent;transition:transform .2s,opacity .15s;opacity:0}
+.md-section-head:hover::before,.md-section.collapsed>.md-section-head::before{opacity:1}
 .md-section.collapsed>.md-section-head::before{transform:rotate(-90deg);border-left-color:var(--a)}
 .md-section.collapsed>.md-section-body{display:none}
 .md-section.collapsed{border-left-color:var(--a);border-left-style:dashed;margin-bottom:0}
@@ -2726,6 +2731,24 @@ mark.find-hl.current{background:var(--a);color:#fff}
   font-family:'JetBrains Mono',monospace;pointer-events:none;background:rgba(18,16,14,.55);
   border-radius:6px;padding:4px 8px}
 @media print{.lightbox{display:none!important}}
+/* Theme switch cross-fade */
+::view-transition-old(root),::view-transition-new(root){animation-duration:.24s;animation-timing-function:ease-out}
+/* Windows "Show animations" off: no slides, fades or smooth scrolling */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{transition-duration:0s!important;animation-duration:0s!important;scroll-behavior:auto!important}
+}
+/* Start screen: recent files instead of the example document */
+.md-start{max-width:560px;margin:8vh auto 0;font-family:'Inter',system-ui,sans-serif}
+.md-start h2{font-size:.78rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--tm);margin:0 0 10px;font-family:'JetBrains Mono',monospace}
+.md-start-list{display:flex;flex-direction:column;gap:2px}
+.md-start-item{display:grid;grid-template-columns:1fr auto;gap:2px 16px;width:100%;border:none;border-radius:8px;background:transparent;color:var(--t);font:inherit;text-align:left;padding:9px 12px;cursor:pointer}
+.md-start-item:hover,.md-start-item:focus-visible{background:var(--as);outline:none}
+.md-start-item:hover .md-start-name,.md-start-item:focus-visible .md-start-name{color:var(--a)}
+.md-start-name{font-size:.95rem;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.md-start-when{font-size:.76rem;color:var(--tm);white-space:nowrap;align-self:center;grid-row:span 2}
+.md-start-folder{font-size:.76rem;color:var(--tm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.md-start-hint{margin-top:18px;padding:0 12px;font-size:.8rem;color:var(--tm)}
+.md-start-hint kbd{font-family:'JetBrains Mono',monospace;font-size:.72rem;border:1px solid var(--b);border-radius:4px;padding:1px 5px}
 </style>
 </head>
 <body>
@@ -2817,6 +2840,7 @@ mark.find-hl.current{background:var(--a);color:#fff}
         <div class="help-row"><span>Show this help</span> <kbd>F1</kbd></div>
         <div class="help-row"><span>Toggle wide/narrow layout</span> <kbd>Ctrl + Shift + W</kbd></div>
         <div class="help-row"><span>Exit Zen / close panel</span> <kbd>Esc</kbd></div>
+        <div class="help-row"><span>Close window (Read, nothing open)</span> <kbd>Esc</kbd></div>
         <div class="help-row"><span>Insert tab</span> <kbd>Tab</kbd></div>
         <div class="help-row"><span>Teleprompter pause/resume</span> <kbd>Space</kbd></div>
         <div class="help-row"><span>Teleprompter speed ±1</span> <kbd>↑</kbd> <kbd>↓</kbd></div>
@@ -3091,11 +3115,6 @@ mark.find-hl.current{background:var(--a);color:#fff}
 <button class="outline-toggle" id="outlineToggle" data-tip="Outline">
   <svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="15" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/><line x1="19" y1="6" x2="21" y2="6"/></svg>
 </button>
-<div class="collapse-btns" id="collapseBtns">
-  <button class="collapse-btn" id="collapseAll" data-tip="Collapse all">▲ All</button>
-  <button class="collapse-btn" id="expandAll" data-tip="Expand all">▼ All</button>
-  <button class="collapse-btn" id="tpToggle" data-tip="Teleprompter">▶ Auto</button>
-</div>
 <div class="tp-bar" id="tpBar">
   <button id="tpSlower" title="Slower (↓ / Shift+↓)">−</button>
   <span class="tp-speed" id="tpSpeed">5</span>
@@ -3105,6 +3124,11 @@ mark.find-hl.current{background:var(--a);color:#fff}
 </div>
 <div class="outline-panel" id="outlinePanel">
   <h4>Outline</h4>
+  <div class="collapse-btns" id="collapseBtns">
+    <button class="collapse-btn" id="collapseAll" title="Fold every section">Collapse all</button>
+    <button class="collapse-btn" id="expandAll" title="Unfold every section">Expand all</button>
+    <button class="collapse-btn" id="tpToggle" title="Teleprompter: scroll the text by itself">▶ Auto-scroll</button>
+  </div>
   <div id="outlineList"></div>
 </div>
 <div class="folder-panel-scrim" id="folderPanelScrim"></div>
@@ -3680,7 +3704,7 @@ function tpStop(){
   if(tp.raf){cancelAnimationFrame(tp.raf);tp.raf=null}
   $('#readerContent').style.transform='';
   $('#tpBar').classList.remove('active');
-  $('#tpToggle').textContent='▶ Auto';
+  $('#tpToggle').textContent='▶ Auto-scroll';
   $('#tpPause').textContent='⏸';
 }
 function tpFrame(){
@@ -4603,6 +4627,7 @@ function mdToggleEditKeepPlace(){
 
 async function afterReaderRender(){
   const root=$('#readerContent'),seq=++mdRenderSeq;
+  if(mdStartList&&!filePath&&!rawMd){mdRenderStart(root);return}
   mdEnhance(root);
   mdDecorateInlineCode(root);
   const key=mdDocKey();
@@ -4623,6 +4648,75 @@ mdApiReady.then(()=>mdState.get('theme')).then(t=>{
   if((t==='dark')!==dark&&(t==='dark'||t==='light'))$('#thm').click();
 });
 $('#thm').addEventListener('click',()=>mdState.set('theme',document.body.getAttribute('data-theme')==='dark'?'dark':'light'));
+
+// Start screen: a window opened without a file lists the files read recently (Api.recent_files)
+// instead of the example document. The host opens a picked file through window.mdlookOpenPath.
+var mdStartList=null; // var: afterReaderRender may run before this line on the first render
+function mdAgo(t){
+  const s=Date.now()/1000-t;
+  if(s<90)return 'just now';
+  if(s<3600)return Math.round(s/60)+' min ago';
+  if(s<86400)return Math.round(s/3600)+' h ago';
+  if(s<86400*2)return 'yesterday';
+  if(s<86400*30)return Math.round(s/86400)+' days ago';
+  return new Date(t*1000).toLocaleDateString();
+}
+function mdRenderStart(root){
+  root.textContent='';
+  const box=document.createElement('div');box.className='md-start';
+  const h=document.createElement('h2');h.textContent='Recent';box.appendChild(h);
+  const list=document.createElement('div');list.className='md-start-list';
+  mdStartList.forEach(f=>{
+    const b=document.createElement('button');b.className='md-start-item';b.type='button';b.title=f.path;
+    const n=document.createElement('span');n.className='md-start-name';n.textContent=f.name;
+    const w=document.createElement('span');w.className='md-start-when';w.textContent=f.t?mdAgo(f.t):'';
+    const d=document.createElement('span');d.className='md-start-folder';d.textContent=f.folder||'';
+    b.append(n,w,d);
+    b.addEventListener('click',()=>{if(window.mdlookOpenPath)window.mdlookOpenPath(f.path)});
+    list.appendChild(b);
+  });
+  box.appendChild(list);
+  const hint=document.createElement('div');hint.className='md-start-hint';
+  hint.innerHTML='Open another file with <kbd>Ctrl+O</kbd> or drop it on the window. <kbd>Esc</kbd> closes.';
+  box.appendChild(hint);
+  root.appendChild(box);
+  buildOutline();
+}
+window.mdlookStartScreen=async function(){
+  const api=window.pywebview&&window.pywebview.api;
+  if(!api||!api.recent_files)return;
+  let list=[];try{list=await api.recent_files()}catch(e){}
+  if(!Array.isArray(list)||!list.length||filePath||hasUnsaved||currentMode!=='read')return;
+  mdStartList=list;rawMd='';fileName='';
+  if($('#editor'))$('#editor').value='';
+  updateFileChrome('','','MDLook');
+  mdRenderStart($('#readerContent'));
+  const first=document.querySelector('.md-start-item');if(first)first.focus({preventScroll:true});
+};
+
+// A theme switched by hand cross-fades instead of flipping: the old page fades into the re-rendered one
+const mdReducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
+let mdThemeFading=false;
+$('#thm').addEventListener('click',e=>{
+  if(mdThemeFading||!e.isTrusted||!document.startViewTransition||mdReducedMotion.matches)return;
+  e.preventDefault();e.stopImmediatePropagation();
+  document.startViewTransition(()=>{mdThemeFading=true;try{$('#thm').click()}finally{mdThemeFading=false}});
+},true);
+
+// Esc in Read with nothing open on top closes the window, as in a viewer opened from Explorer.
+// Decided before other handlers run: closing the find bar, a menu or a dialog takes that Esc.
+function mdEscMayClose(){
+  if(currentMode!=='read'||zenMode||outlineOpen||tp.active)return false;
+  if(document.querySelector('#findBar.open,#helpModal.active,#lightbox.active,#confirmOverlay.active,#ctxMenu.open,#exportMenu.open,#colorPicker.open,#folderPanel.open,#mdLinkCard.show'))return false;
+  const sel=getSelection();if(sel&&!sel.isCollapsed)return false;
+  return true;
+}
+window.addEventListener('keydown',e=>{
+  if(e.key!=='Escape'||e.repeat||e.ctrlKey||e.altKey||e.shiftKey||e.metaKey)return;
+  const api=window.pywebview&&window.pywebview.api;
+  if(!api||!api.close_window||!mdEscMayClose())return;
+  setTimeout(()=>{if(!e.defaultPrevented)api.close_window()},0);
+},true);
 
 // Text zoom: Ctrl + / Ctrl - / Ctrl 0 and Ctrl + wheel scale the document text, remembered
 const MD_ZOOMS=[.8,.9,1,1.1,1.2,1.3,1.4,1.5];

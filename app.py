@@ -1076,6 +1076,15 @@ BRIDGE_JS = """
       return true;
     }
 
+    // Open a file in this window by path (start screen, files dropped on an empty window).
+    window.mdlookOpenPath = async function(path){
+      var api = window.pywebview && window.pywebview.api;
+      if(!api || !api.open_file_path) return false;
+      if(hasUnsaved && !await appConfirm('Unsaved changes. Open another file?')) return false;
+      var res = await api.open_file_path(path);
+      return applyDocumentResult(res);
+    };
+
     // ── Override Save: write to disk instead of Blob download ──
     window.saveFile = async function(){
       var editor = document.querySelector('#editor');
@@ -1837,6 +1846,8 @@ BRIDGE_JS = """
         applyDocumentResult(res, true);
         docAt = Date.now();
         sendTiming();
+        // No file: the start screen lists recent files where the host keeps them.
+        if(res && !res.path && window.mdlookStartScreen) window.mdlookStartScreen();
       });
     } else {
       sendTiming();
