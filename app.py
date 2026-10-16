@@ -1101,6 +1101,10 @@ BRIDGE_JS = """
         btn.classList.add('saved');
         btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px"><polyline points="20 6 9 17 4 12"/></svg>';
         setTimeout(function(){ btn.innerHTML = orig; btn.classList.remove('saved'); }, 1500);
+        // In Zen the bar with the green Save is hidden: say it in a toast
+        if(document.body.classList.contains('zen') && window.mdToast) window.mdToast('Saved');
+      } else if(res && res.reason !== 'cancelled' && window.mdToast){
+        window.mdToast('Save failed: ' + (res.reason || 'unknown error'));
       }
     };
     document.querySelector('#btnSave').onclick = saveFile;
@@ -1158,7 +1162,18 @@ BRIDGE_JS = """
     if(btnOpen2 && btnOpen2.parentNode) btnOpen2.parentNode.insertBefore(btnRefresh, btnOpen2.nextSibling);
     btnRefresh.addEventListener('click', async function(){
       if(hasUnsaved && !await appConfirm('Unsaved changes. Reload and discard?')) return;
+      btnRefresh.classList.remove('md-spin'); void btnRefresh.offsetWidth; btnRefresh.classList.add('md-spin');
+      setTimeout(function(){ btnRefresh.classList.remove('md-spin'); }, 600);
       var res = await window.pywebview.api.reload_file(true);
+      // The answer comes once the page has compared the blocks with the previous view
+      if(res && res.ok !== false && window.mdToast){
+        var onRendered = function(e){
+          var n = e.detail ? e.detail.changed : 0;
+          window.mdToast(n ? 'Changed blocks: ' + n : 'No changes');
+        };
+        document.addEventListener('md-rendered', onRendered, {once: true});
+        setTimeout(function(){ document.removeEventListener('md-rendered', onRendered); }, 3000);
+      }
       applyDocumentResult(res);
     });
 
@@ -1315,8 +1330,10 @@ BRIDGE_JS = """
       toExpand.reverse().forEach(function(s){ s.classList.remove('collapsed'); });
     }
 
-    function mdlookScrollElement(target, behavior){
+    function mdlookScrollElement(target, behavior, back){
       if(!target) return false;
+      // The template's common jump: unfolds, scrolls, flashes the target, offers the way back
+      if(window.mdJump) return window.mdJump(target, {behavior: behavior, back: back});
       mdlookExpandForTarget(target);
       target.scrollIntoView({behavior:behavior || 'smooth', block:'start'});
       return true;
@@ -1369,8 +1386,9 @@ BRIDGE_JS = """
       var anchor = document.getElementById(target) || document.getElementsByName(target)[0]
         || document.getElementById(lower) || document.getElementsByName(lower)[0]
         || document.getElementById(upper) || document.getElementsByName(upper)[0];
-      if(anchor) return mdlookScrollElement(anchor, 'smooth');
-      return mdlookScrollElement(mdlookFindTextTarget(target), 'smooth');
+      // --goto and file.md#anchor open the window there: nothing to go back to
+      if(anchor) return mdlookScrollElement(anchor, 'smooth', false);
+      return mdlookScrollElement(mdlookFindTextTarget(target), 'smooth', false);
     }
 
     window.mdlookGotoTarget = function(target){
@@ -1761,25 +1779,43 @@ BRIDGE_JS = """
         updateCounter();
       }
 
+      // Going past the last match to the first (or back) is marked ↻ in the counter for a second
+      var wrapTimer = null, wrapped = false;
+      function markWrap(){
+        wrapped = true;
+        clearTimeout(wrapTimer);
+        wrapTimer = setTimeout(function(){ wrapped = false; updateCounter(); }, 1000);
+      }
+
       function navigateNext(){
         if(!matches.length) return;
+        if(matches.length > 1 && matchIdx === matches.length - 1) markWrap();
         matchIdx = (matchIdx + 1) % matches.length;
         highlightCurrent();
       }
 
       function navigatePrev(){
         if(!matches.length) return;
+        if(matches.length > 1 && matchIdx === 0) markWrap();
         matchIdx = (matchIdx - 1 + matches.length) % matches.length;
         highlightCurrent();
       }
 
       function updateCounter(){
+        // No matches for a typed query: the bar takes a soft error tone
+        if(bar) bar.classList.toggle('md-noresult', !matches.length && !!(input && input.value));
+        counter.classList.toggle('md-wrapped', wrapped && matches.length > 0);
         if(!matches.length){ counter.textContent = input && input.value ? 'No results' : ''; return; }
-        counter.textContent = (matchIdx + 1) + ' / ' + matches.length;
+        counter.textContent = (wrapped ? '\\u21bb ' : '') + (matchIdx + 1) + ' / ' + matches.length;
       }
 
+      // Search remembers where the reading was when it opened; closing it offers the way back
+      var searchFrom = null;
+
       function openSearch(origin){
+        var wasOpen = !!bar && bar.style.display !== 'none';
         createBar();
+        if(!wasOpen) searchFrom = window.mdBackFrom ? window.mdBackFrom() : null;
         searchTarget = currentSearchTarget(origin);
         bar.style.display = 'flex';
         input.focus();
@@ -1787,12 +1823,15 @@ BRIDGE_JS = """
         if(input.value) doSearch(input.value);
       }
 
-      function closeSearch(){
+      function closeSearch(offerBack){
         var editorMatch = (searchMode === 'editor' && matchIdx >= 0 && matchIdx < matches.length) ? matches[matchIdx] : null;
+        var from = searchFrom;
+        searchFrom = null;
         clearHighlights();
         if(input) input.value = '';
-        if(bar) bar.style.display = 'none';
+        if(bar){ bar.style.display = 'none'; bar.classList.remove('md-noresult'); }
         if(counter) counter.textContent = '';
+        if(offerBack !== false && from !== null && window.mdBackOffer) window.mdBackOffer(from);
         searchTarget = null;
         if(editorMatch){
           var ed = document.querySelector('#editor');
@@ -1815,7 +1854,7 @@ BRIDGE_JS = """
 
       // Expose reset so Open/Refresh/Reload handlers can invalidate stale matches
       window._mdlookResetSearch = function(){
-        closeSearch();
+        closeSearch(false);
       };
 
       // Intercept Ctrl+F — suppress native WebView2 find bar, show ours instead

@@ -2614,8 +2614,8 @@ pre.md-changed{outline:2px solid var(--a);outline-offset:3px;animation:mdChgOutl
 .outline-panel{position:fixed;top:var(--bar-h);right:0;width:260px;height:calc(100vh - var(--bar-h));background:var(--s);border-left:1px solid var(--b);z-index:55;overflow-y:auto;padding:16px;transform:translateX(100%);transition:transform .25s ease;box-shadow:-4px 0 20px rgba(0,0,0,.06)}
 .outline-panel.open{transform:translateX(0)}
 .outline-panel h4{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--tm);margin-bottom:10px;font-family:'JetBrains Mono',monospace}
-.folder-panel-scrim{display:none;position:fixed;top:var(--bar-h);left:0;right:0;bottom:0;z-index:64;background:rgba(0,0,0,.08)}
-.folder-panel-scrim.open{display:block}
+.folder-panel-scrim{position:fixed;top:var(--bar-h);left:0;right:0;bottom:0;z-index:64;background:rgba(0,0,0,.08);opacity:0;visibility:hidden;transition:opacity .22s ease,visibility 0s linear .22s}
+.folder-panel-scrim.open{opacity:1;visibility:visible;transition:opacity .22s ease,visibility 0s}
 .folder-panel{position:fixed;top:var(--bar-h);left:0;width:min(320px,calc(100vw - 48px));height:calc(100vh - var(--bar-h));background:var(--s);border-right:1px solid var(--b);z-index:65;display:flex;flex-direction:column;transform:translateX(-100%);transition:transform .22s ease;box-shadow:4px 0 24px rgba(0,0,0,.1)}
 .folder-panel.open{transform:translateX(0)}
 .folder-panel-head{padding:14px 14px 10px;border-bottom:1px solid var(--b)}
@@ -2731,6 +2731,39 @@ mark.find-hl.current{background:var(--a);color:#fff}
   font-family:'JetBrains Mono',monospace;pointer-events:none;background:rgba(18,16,14,.55);
   border-radius:6px;padding:4px 8px}
 @media print{.lightbox{display:none!important}}
+/* ── Micro-interactions ── */
+/* Where a jump lands flashes once; the text does not move */
+.md-arrive{animation:md-arrive 1.2s ease-out;border-radius:4px}
+@keyframes md-arrive{0%,30%{background-color:color-mix(in srgb,var(--a) 20%,transparent);box-shadow:0 0 0 6px color-mix(in srgb,var(--a) 20%,transparent)}100%{background-color:transparent;box-shadow:0 0 0 6px transparent}}
+/* Way back after a jump */
+.md-back{position:fixed;left:20px;bottom:22px;z-index:70;border:1px solid var(--b);background:var(--s);color:var(--t2);border-radius:8px;padding:6px 12px;font:inherit;font-size:.8rem;cursor:pointer;box-shadow:var(--sh);opacity:0;transform:translateY(8px);pointer-events:none;transition:opacity .18s,transform .18s}
+.md-back.show{opacity:1;transform:none;pointer-events:auto}
+.md-back:hover{border-color:var(--a);color:var(--a)}
+body.zen .md-back{display:none}
+/* Buttons give under the pointer */
+.btn:active,.outline-toggle:active,.collapse-btn:active,.md pre .cp:active,.md-start-item:active,.md-back:active{transform:scale(.94)}
+.tab:active{transform:scale(.95)}
+/* Reload spins its icon */
+#btnRefresh.md-spin svg{animation:md-spin .5s ease-out}
+@keyframes md-spin{to{transform:rotate(360deg)}}
+/* Copied on selection: a quiet mark by the pointer */
+.md-selcopied{position:fixed;z-index:300;pointer-events:none;font-size:.7rem;font-family:'JetBrains Mono',monospace;color:var(--a);background:var(--s);border:1px solid var(--b);border-radius:5px;padding:1px 6px;animation:md-selcopied .9s ease-out forwards}
+@keyframes md-selcopied{0%{opacity:0;transform:translateY(2px)}15%{opacity:1;transform:none}70%{opacity:1}100%{opacity:0}}
+/* Images, diagrams and late formulas fade in instead of popping */
+.md-img-wait{opacity:0}
+.md-fadein{animation:md-fadein .15s ease-out}
+@keyframes md-fadein{from{opacity:0}}
+/* Paging mark: the line that was at the screen edge before Space / PageDown */
+.md-pagemark{position:absolute;height:2px;width:56px;border-radius:2px;background:var(--a);pointer-events:none;animation:md-pagemark 1s ease-out forwards}
+@keyframes md-pagemark{0%,40%{opacity:.9}100%{opacity:0}}
+/* Warm tooltips: once one has shown, the next ones show at once */
+body.md-tips-warm [data-tip]:hover::after{transition-delay:0s}
+/* Search: a wrap around and an empty result are visible */
+#mdlook-search-bar.md-noresult{background:color-mix(in srgb,#d64545 9%,var(--s))!important;border-color:color-mix(in srgb,#d64545 45%,var(--b))!important}
+#mdlook-search-bar .md-wrapped{color:var(--a)!important;font-weight:600}
+/* Selection in the theme's accent */
+::selection{background:color-mix(in srgb,var(--a) 26%,transparent)}
+.md pre ::selection{background:color-mix(in srgb,var(--a) 40%,transparent)}
 /* Theme switch cross-fade */
 ::view-transition-old(root),::view-transition-new(root){animation-duration:.24s;animation-timing-function:ease-out}
 /* Windows "Show animations" off: no slides, fades or smooth scrolling */
@@ -2760,9 +2793,9 @@ mark.find-hl.current{background:var(--a);color:#fff}
     <span class="unsaved-dot" id="unsavedDot"></span>
   </div>
   <div class="bar-c">
-    <button class="tab active" data-mode="read">Read</button>
-    <button class="tab" data-mode="edit">Edit</button>
-    <button class="tab" data-mode="source">Source</button>
+    <button class="tab active" data-mode="read" data-tip="Read (Ctrl+1)">Read</button>
+    <button class="tab" data-mode="edit" data-tip="Edit (Ctrl+2, Ctrl+E)">Edit</button>
+    <button class="tab" data-mode="source" data-tip="Source (Ctrl+3)">Source</button>
   </div>
   <div class="bar-r">
     <input type="file" id="fileInput" accept=".md,.markdown,.txt" style="display:none">
@@ -3743,20 +3776,12 @@ function buildOutline(){
     btn.textContent=h.textContent;
     btn.addEventListener('click',()=>{
       if(currentMode==='read'){
-        // Expand any collapsed ancestor sections
-        let el=h.closest('.md-section');
-        const toExpand=[];
-        while(el){
-          if(el.classList.contains('collapsed'))toExpand.push(el);
-          el=el.parentElement?el.parentElement.closest('.md-section'):null;
-        }
-        toExpand.reverse().forEach(s=>s.classList.remove('collapsed'));
-        const sec=h.closest('.md-section-head');
-        (sec||h).scrollIntoView({behavior:'smooth',block:'start'});
+        // mdJump unfolds collapsed ancestors, scrolls, flashes the heading and offers the way back
+        mdJump(h.closest('.md-section-head')||h);
       } else {
         // Edit mode: scroll both editor and preview to the heading
         scrollEditorToHeading(h.textContent.trim());
-        h.scrollIntoView({behavior:'smooth',block:'start'});
+        mdJump(h,{back:false});
       }
     });
     list.appendChild(btn);
@@ -3794,14 +3819,7 @@ document.addEventListener('click',e=>{
   try{id=decodeURIComponent(id)}catch(_){}
   const target=document.getElementById(id)||document.getElementsByName(id)[0];
   if(!target)return;
-  let el=target.closest('.md-section');
-  const toExpand=[];
-  while(el){
-    if(el.classList.contains('collapsed'))toExpand.push(el);
-    el=el.parentElement?el.parentElement.closest('.md-section'):null;
-  }
-  toExpand.reverse().forEach(s=>s.classList.remove('collapsed'));
-  target.scrollIntoView({behavior:'smooth',block:'start'});
+  mdJump(target);
   try{if(history&&history.replaceState)history.replaceState(null,'',href)}catch(_){}
 },true);
 
@@ -3902,8 +3920,7 @@ function wrapCollapsible(container){
       updateBadge();
       function toggleSection(){
         if(section.classList.contains('md-section-root'))return;
-        section.classList.toggle('collapsed');
-        if(section.classList.contains('collapsed'))updateBadge();
+        mdFoldAnimated(section,body,updateBadge);
       }
       onHeadClick(head,toggleSection);
       line.addEventListener('click',e=>{e.stopPropagation();toggleSection()});
@@ -3956,8 +3973,7 @@ function wrapCollapsible(container){
     updateBadge();
     function toggleSection(){
       if(section.classList.contains('md-section-root'))return;
-      section.classList.toggle('collapsed');
-      if(section.classList.contains('collapsed'))updateBadge();
+      mdFoldAnimated(section,body,updateBadge);
     }
     onHeadClick(head,toggleSection);
     line.addEventListener('click',e=>{e.stopPropagation();toggleSection()});
@@ -4481,7 +4497,23 @@ function mdNumberColumns(root){
     }
   });
 }
-function mdEnhance(root){mdHighlight(root);mdNumberColumns(root);mdScheduleNav()}
+function mdEnhance(root){mdHighlight(root);mdNumberColumns(root);mdFadeImages(root);mdScheduleNav()}
+// Images, diagrams and formulas already shown in this window do not fade again (reload, Edit preview)
+// Function declarations, not consts: renders can run before this part of the script has executed
+function mdSeen(){return mdSeen.s||(mdSeen.s=new Set())}
+function mdMotionOff(){return matchMedia('(prefers-reduced-motion: reduce)').matches}
+function mdFadeIn(el){if(!el||mdMotionOff())return;el.classList.remove('md-fadein');void el.offsetWidth;el.classList.add('md-fadein');setTimeout(()=>el.classList.remove('md-fadein'),300)}
+function mdFadeImages(root){
+  root.querySelectorAll('img').forEach(img=>{
+    const k='i:'+(img.getAttribute('data-file-src')||img.getAttribute('src')||'');
+    if(img.complete||mdSeen().has(k)||mdMotionOff())return;
+    img.classList.add('md-img-wait');
+    const done=ok=>{img.classList.remove('md-img-wait');if(ok){mdSeen().add(k);mdFadeIn(img)}};
+    img.addEventListener('load',()=>done(true),{once:true});
+    img.addEventListener('error',()=>done(false),{once:true});
+    setTimeout(()=>img.classList.remove('md-img-wait'),3000); // never leave an image hidden
+  });
+}
 
 // Current section in the outline and reading progress follow the scrolled pane
 const mdProgress=document.createElement('div');mdProgress.id='mdProgress';mdProgress.className='md-progress';$('.bar').appendChild(mdProgress);
@@ -4627,6 +4659,7 @@ function mdToggleEditKeepPlace(){
 
 async function afterReaderRender(){
   const root=$('#readerContent'),seq=++mdRenderSeq;
+  mdBackHide();
   if(mdStartList&&!filePath&&!rawMd){mdRenderStart(root);return}
   mdEnhance(root);
   mdDecorateInlineCode(root);
@@ -4636,6 +4669,8 @@ async function afterReaderRender(){
   const saved=mdDocState[key]||await mdState.get(key)||{};
   if(seq!==mdRenderSeq)return;
   const blocks=mdMarkChanges(root,saved.blocks);
+  // Reload file reports how many blocks changed
+  document.dispatchEvent(new CustomEvent('md-rendered',{detail:{changed:root.querySelectorAll('.md-changed').length}}));
   const first=!mdRestored.has(key);mdRestored.add(key);
   if(first&&saved.scroll>0&&!window.mdlookGotoUsed)mdRestoreScroll(saved.scroll);
   mdDocState[key]={blocks,scroll:first?(saved.scroll||0):Math.round($('#reader').scrollTop)};
@@ -4648,6 +4683,161 @@ mdApiReady.then(()=>mdState.get('theme')).then(t=>{
   if((t==='dark')!==dark&&(t==='dark'||t==='light'))$('#thm').click();
 });
 $('#thm').addEventListener('click',()=>mdState.set('theme',document.body.getAttribute('data-theme')==='dark'?'dark':'light'));
+
+/* ── Micro-interactions: the page answers what the reader does ── */
+
+// A section folds and unfolds by animating its body; fold-all, unfold-all and jumps stay instant.
+// Tall bodies animate only their first screen and a half: the rest is off screen anyway.
+function mdFoldAnimated(section,body,updateBadge){
+  if(body._mdAnim){body._mdAnim.finish();body._mdAnim=null}
+  const collapsing=!section.classList.contains('collapsed');
+  if(collapsing)updateBadge();
+  if(mdMotionOff()||!body.animate){section.classList.toggle('collapsed');return}
+  const cap=Math.round(innerHeight*1.5);
+  let h;
+  if(!collapsing){section.classList.remove('collapsed');h=Math.min(body.offsetHeight,cap)}
+  else h=Math.min(body.offsetHeight,cap);
+  const frames=[{height:h+'px',opacity:1},{height:'0px',opacity:0}];
+  body.style.overflow='hidden';
+  const a=body.animate(collapsing?frames:frames.reverse(),{duration:150,easing:'ease-out',fill:collapsing?'forwards':'none'});
+  body._mdAnim=a;
+  a.onfinish=a.oncancel=()=>{
+    if(body._mdAnim===a)body._mdAnim=null;
+    if(collapsing)section.classList.add('collapsed');
+    body.style.overflow='';
+    if(collapsing)a.cancel();
+  };
+}
+
+// Unfold every collapsed section around a target, at once
+function mdUnfoldFor(target){
+  let el=target&&target.closest?target.closest('.md-section'):null;
+  const list=[];
+  while(el){if(el.classList.contains('collapsed'))list.push(el);el=el.parentElement?el.parentElement.closest('.md-section'):null}
+  list.reverse().forEach(s=>{const b=s.querySelector(':scope>.md-section-body');if(b&&b._mdAnim)b._mdAnim.finish();s.classList.remove('collapsed')});
+}
+
+// Run fn once a scroll box stops: after a smooth scroll ends, or at once if nothing moves
+function mdAfterScroll(box,fn){
+  let done=false,moved=false;
+  const go=()=>{if(done)return;done=true;box.removeEventListener('scrollend',go);box.removeEventListener('scroll',mv);clearTimeout(t1);clearTimeout(t2);fn()};
+  const mv=()=>{moved=true};
+  box.addEventListener('scroll',mv,{passive:true});
+  box.addEventListener('scrollend',go);
+  const t1=setTimeout(()=>{if(!moved)go()},150),t2=setTimeout(go,1500);
+}
+
+// The block a jump lands on flashes once
+const MD_FLASH_SEL='.md-section-head,h1,h2,h3,h4,h5,h6,p,li,tr,pre,blockquote,table,.math-block,.mermaid-wrap,dt,dd';
+function mdFlash(el){
+  if(!el)return;
+  const b=(el.matches&&el.matches(MD_FLASH_SEL))?el:(el.closest&&el.closest(MD_FLASH_SEL))||el;
+  b.classList.remove('md-arrive');void b.offsetWidth;b.classList.add('md-arrive');
+  clearTimeout(b._mdArrive);b._mdArrive=setTimeout(()=>b.classList.remove('md-arrive'),1300);
+}
+
+// Every jump goes here: outline, footnotes, #anchors, file.md#anchor, --goto, search.
+// opts.back === false: no way back (--goto on opening, Edit preview)
+let mdLastJump={el:null,t:0};
+function mdJump(target,opts){
+  opts=opts||{};
+  if(!target)return false;
+  const now=Date.now();
+  // the template and the host both handle a #link click: one jump
+  if(mdLastJump.el===target&&now-mdLastJump.t<400)return true;
+  mdLastJump={el:target,t:now};
+  mdUnfoldFor(target);
+  const box=mdScrollBox(),from=box?box.scrollTop:0;
+  target.scrollIntoView({behavior:opts.behavior||'smooth',block:'start'});
+  if(box)mdAfterScroll(box,()=>{mdFlash(target);if(opts.back!==false)mdBackOffer(from)});
+  else mdFlash(target);
+  return true;
+}
+window.mdJump=mdJump;
+
+// Way back: after a jump of more than a screen, "← Back" returns to where the reading was
+let mdBack=null,mdBackTimer=0;
+function mdBackOffer(from){
+  const box=$('#reader');
+  if(currentMode!=='read'||typeof from!=='number'||Math.abs(box.scrollTop-from)<box.clientHeight*.9)return;
+  mdBack={y:from,arrived:box.scrollTop};
+  let b=$('#mdBack');
+  if(!b){
+    b=document.createElement('button');b.id='mdBack';b.type='button';b.className='md-back';
+    b.textContent='← Back';b.title='Back to where you were reading (Alt+←)';
+    b.addEventListener('click',mdGoBack);document.body.appendChild(b);
+  }
+  b.classList.add('show');
+  clearTimeout(mdBackTimer);mdBackTimer=setTimeout(mdBackHide,6000);
+}
+window.mdBackOffer=mdBackOffer;
+window.mdBackFrom=()=>currentMode==='read'?$('#reader').scrollTop:null;
+function mdBackHide(){mdBack=null;clearTimeout(mdBackTimer);const b=$('#mdBack');if(b)b.classList.remove('show')}
+function mdGoBack(){
+  if(!mdBack)return;
+  const box=$('#reader'),y=mdBack.y;
+  mdBackHide();
+  box.scrollTo({top:y,behavior:mdMotionOff()?'auto':'smooth'});
+  mdAfterScroll(box,()=>{
+    const top=box.getBoundingClientRect().top+8;
+    const el=[...$('#readerContent').querySelectorAll(MD_FLASH_SEL)].find(e=>{const r=e.getBoundingClientRect();return r.height&&r.bottom>top});
+    mdFlash(el);
+  });
+}
+$('#reader').addEventListener('scroll',()=>{if(mdBack&&Math.abs($('#reader').scrollTop-mdBack.arrived)>$('#reader').clientHeight*1.5)mdBackHide()},{passive:true});
+document.addEventListener('keydown',e=>{if(mdBack&&e.altKey&&!e.ctrlKey&&e.key==='ArrowLeft'){e.preventDefault();e.stopPropagation();mdGoBack()}},true);
+
+// Selecting text in Read copies it: selecting is the sign the reader wants it.
+// Editor, source view and inputs are left alone: there a selection is made to replace text.
+$('#reader').addEventListener('mouseup',e=>{
+  if(e.button!==0)return;
+  setTimeout(()=>{
+    const sel=getSelection();
+    if(!sel||sel.isCollapsed||currentMode!=='read')return;
+    const n=sel.anchorNode&&(sel.anchorNode.nodeType===1?sel.anchorNode:sel.anchorNode.parentElement);
+    if(!n||!n.closest('#readerContent')||n.closest('input,textarea,[contenteditable]'))return;
+    const text=sel.toString();
+    if(!text.trim())return;
+    navigator.clipboard.writeText(text).then(()=>{
+      const m=document.createElement('div');m.className='md-selcopied';m.textContent='copied';
+      m.style.left=Math.min(e.clientX+12,innerWidth-70)+'px';m.style.top=Math.max(e.clientY-26,4)+'px';
+      document.body.appendChild(m);setTimeout(()=>m.remove(),950);
+    }).catch(()=>{});
+  },0);
+});
+
+// Paging with Space / PageDown leaves a mark on the line that was at the screen edge
+document.addEventListener('keydown',e=>{
+  if(currentMode!=='read'||tp.active||e.ctrlKey||e.altKey||e.metaKey)return;
+  if(e.target&&e.target.closest&&e.target.closest('input,textarea,select,button,[contenteditable]'))return;
+  const down=e.key==='PageDown'||(e.key===' '&&!e.shiftKey),up=e.key==='PageUp'||(e.key===' '&&e.shiftKey);
+  if(!down&&!up)return;
+  const box=$('#reader'),y=down?box.scrollTop+box.clientHeight:box.scrollTop,start=box.scrollTop;
+  setTimeout(()=>mdAfterScroll(box,()=>{
+    if(box.scrollTop===start)return; // already at the end
+    const c=$('#readerContent').getBoundingClientRect(),br=box.getBoundingClientRect();
+    const m=document.createElement('div');m.className='md-pagemark';
+    m.style.top=(y-1)+'px';m.style.left=(c.left-br.left+box.scrollLeft+12)+'px';
+    box.appendChild(m);setTimeout(()=>m.remove(),1100);
+  }),0);
+});
+
+// Tooltips: the first waits as before; while one is up, and half a second after, the next show at once
+(function(){
+  let warm=0,cool=0,inTip=false;
+  document.addEventListener('mouseover',e=>{
+    const t=e.target.closest&&e.target.closest('[data-tip]');
+    if(!t){inTip=false;return}
+    inTip=true;clearTimeout(cool);
+    if(!document.body.classList.contains('md-tips-warm')){clearTimeout(warm);warm=setTimeout(()=>{if(inTip)document.body.classList.add('md-tips-warm')},300)}
+  });
+  document.addEventListener('mouseout',e=>{
+    const t=e.target.closest&&e.target.closest('[data-tip]');
+    if(!t||(e.relatedTarget&&e.relatedTarget.closest&&e.relatedTarget.closest('[data-tip]')))return;
+    inTip=false;clearTimeout(warm);clearTimeout(cool);
+    cool=setTimeout(()=>document.body.classList.remove('md-tips-warm'),500);
+  });
+})();
 
 // Start screen: a window opened without a file lists the files read recently (Api.recent_files)
 // instead of the example document. The host opens a picked file through window.mdlookOpenPath.
@@ -4695,10 +4885,9 @@ window.mdlookStartScreen=async function(){
 };
 
 // A theme switched by hand cross-fades instead of flipping: the old page fades into the re-rendered one
-const mdReducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
 let mdThemeFading=false;
 $('#thm').addEventListener('click',e=>{
-  if(mdThemeFading||!e.isTrusted||!document.startViewTransition||mdReducedMotion.matches)return;
+  if(mdThemeFading||!e.isTrusted||!document.startViewTransition||mdMotionOff())return;
   e.preventDefault();e.stopImmediatePropagation();
   document.startViewTransition(()=>{mdThemeFading=true;try{$('#thm').click()}finally{mdThemeFading=false}});
 },true);
@@ -4708,6 +4897,7 @@ $('#thm').addEventListener('click',e=>{
 function mdEscMayClose(){
   if(currentMode!=='read'||zenMode||outlineOpen||tp.active)return false;
   if(document.querySelector('#findBar.open,#helpModal.active,#lightbox.active,#confirmOverlay.active,#ctxMenu.open,#exportMenu.open,#colorPicker.open,#folderPanel.open,#mdLinkCard.show'))return false;
+  const sb=document.getElementById('mdlook-search-bar');if(sb&&sb.style.display!=='none')return false;
   const sel=getSelection();if(sel&&!sel.isCollapsed)return false;
   return true;
 }
@@ -4757,12 +4947,14 @@ function loadEmbeddedLib(id,globalName){
   return typeof window[globalName]!=='undefined';
 }
 /* ── KaTeX math rendering (v2.17.3) ── */
-function renderMath(container){
+function renderMath(container,late){
   if(!container.querySelector('.math-inline,.math-block'))return;
   if(!loadEmbeddedLib('embedded-katex-js','katex')){
-    setTimeout(()=>renderMath(container),100);
+    setTimeout(()=>renderMath(container,true),100);
     return;
   }
+  // Formulas that arrive after the text (KaTeX still loading) fade in rather than pop
+  if(late)container.querySelectorAll('.math-block').forEach(mdFadeIn);
   container.querySelectorAll('.math-inline').forEach(el=>{
     try{katex.render(el.dataset.math,el,{throwOnError:false,displayMode:false})}
     catch(e){el.textContent='$'+el.dataset.math+'$'}
@@ -4786,8 +4978,11 @@ async function renderMermaid(container){
   // Mermaid sizes nodes by measuring text: load the label font (Latin and Cyrillic faces)
   // first, otherwise labels are measured in a fallback font and clipped once Inter arrives
   try{await Promise.all(['400 16px Inter','500 16px Inter'].map(f=>document.fonts.load(f,'Aa Жж')))}catch(e){}
+  blocks.forEach(b=>{if(b._mdSrc===undefined)b._mdSrc=b.textContent});
   try{await mermaid.run({nodes:blocks})}catch(e){console.warn('Mermaid render error:',e)}
   markWideDiagrams(container);
+  // A diagram drawn for the first time in this window fades in; the same one redrawn on reload does not
+  blocks.forEach(b=>{if(!mdSeen().has('m:'+b._mdSrc)){mdSeen().add('m:'+b._mdSrc);mdFadeIn(b)}});
 }
 // A diagram whose natural width does not fit the column is marked .wide (CSS widens its frame)
 function markWideDiagrams(container){
@@ -5341,21 +5536,51 @@ function lbOpen(host,target){
   let idx=items.findIndex(it=>it.node===target||it.node.contains(target));
   if(idx<0)idx=0;
   lbState.items=items;lbState.open=true;lbState.drag=null;
+  if(lbState.closing){lbState.closing.finish();lbState.closing=null}
   $('#lightbox').classList.add('active');
   lbShow(idx);
+  // The picture grows out of its place in the text, the backdrop darkens with it
+  const from=lbTextRect(items[lbState.idx]);
+  if(from&&!mdMotionOff()){
+    const c=$('#lbContent'),root=$('#lightbox'),end=getComputedStyle(c).transform;
+    c.animate([{transform:lbRectTransform(from)},{transform:end}],{duration:200,easing:'cubic-bezier(.2,.7,.3,1)'});
+    root.animate([{backgroundColor:'rgba(24,20,17,0)'},{backgroundColor:getComputedStyle(root).backgroundColor}],{duration:200,easing:'ease-out'});
+  }
   return true;
 }
+// Where an item sits in the text now, if it is on screen
+function lbTextRect(item){
+  if(!item||!item.node||!item.node.isConnected)return null;
+  const r=item.node.getBoundingClientRect();
+  if(!r.width||!r.height||r.bottom<0||r.top>innerHeight||r.right<0||r.left>innerWidth)return null;
+  return r;
+}
+// Transform of #lbContent (origin 0 0) that puts the picture on rect r
+function lbRectTransform(r){return 'translate('+r.left+'px,'+r.top+'px) scale('+(r.width/lbState.natW)+')'}
 
 function lbClose(){
   if(!lbState.open)return;
   lbState.open=false;lbState.drag=null;
-  const root=$('#lightbox');
-  if(root)root.classList.remove('active');
-  const c=$('#lbContent');
-  if(c){c.innerHTML='';c.style.transform=''}
-  const s=lbStage();
-  if(s)s.classList.remove('grabbing');
-  lbState.items=[];lbState.idx=-1;
+  const root=$('#lightbox'),c=$('#lbContent');
+  const to=lbTextRect(lbState.items[lbState.idx]);
+  function done(){
+    lbState.closing=null;
+    if(lbState.open)return;
+    if(root)root.classList.remove('active');
+    if(c){c.innerHTML='';c.style.transform=''}
+    const s=lbStage();
+    if(s)s.classList.remove('grabbing');
+    lbState.items=[];lbState.idx=-1;
+  }
+  if(!root||!c||mdMotionOff()){done();return}
+  // Back to its place in the text from wherever zoom and pan left it; off screen it just fades
+  const opt={duration:180,easing:'cubic-bezier(.4,0,.6,1)',fill:'forwards'};
+  const a=to
+    ?(c.animate([{transform:getComputedStyle(c).transform},{transform:lbRectTransform(to)}],opt),
+      root.animate([{backgroundColor:getComputedStyle(root).backgroundColor},{backgroundColor:'rgba(24,20,17,0)'}],opt))
+    :root.animate([{opacity:1},{opacity:0}],opt);
+  lbState.closing=a;
+  a.onfinish=()=>{root.getAnimations().forEach(x=>x.cancel());c.getAnimations().forEach(x=>x.cancel());done()};
 }
 window.mdlookCloseLightbox=lbClose;
 
