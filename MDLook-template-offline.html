@@ -4738,7 +4738,7 @@ function mdFlash(el){
 
 // Every jump goes here: outline, footnotes, #anchors, file.md#anchor, --goto, search.
 // opts.back === false: no way back (--goto on opening, Edit preview)
-let mdLastJump={el:null,t:0};
+let mdLastJump={el:null,t:0},mdJumping=0;
 function mdJump(target,opts){
   opts=opts||{};
   if(!target)return false;
@@ -4749,8 +4749,10 @@ function mdJump(target,opts){
   mdUnfoldFor(target);
   const box=mdScrollBox(),from=box?box.scrollTop:0;
   target.scrollIntoView({behavior:opts.behavior||'smooth',block:'start'});
-  if(box)mdAfterScroll(box,()=>{mdFlash(target);if(opts.back!==false)mdBackOffer(from)});
-  else mdFlash(target);
+  // While the jump itself scrolls, "scrolled away from Back" must not fire
+  mdJumping++;
+  if(box)mdAfterScroll(box,()=>{mdJumping--;mdFlash(target);if(opts.back!==false)mdBackOffer(from)});
+  else{mdJumping--;mdFlash(target)}
   return true;
 }
 window.mdJump=mdJump;
@@ -4759,8 +4761,13 @@ window.mdJump=mdJump;
 let mdBack=null,mdBackTimer=0;
 function mdBackOffer(from){
   const box=$('#reader');
-  if(currentMode!=='read'||typeof from!=='number'||Math.abs(box.scrollTop-from)<box.clientHeight*.9)return;
-  mdBack={y:from,arrived:box.scrollTop};
+  if(currentMode!=='read'||typeof from!=='number')return;
+  // Hopping through the outline: the way back stays the place reading was before the first hop
+  if(mdBack){mdBack.arrived=box.scrollTop}
+  else{
+    if(Math.abs(box.scrollTop-from)<box.clientHeight*.9)return;
+    mdBack={y:from,arrived:box.scrollTop};
+  }
   let b=$('#mdBack');
   if(!b){
     b=document.createElement('button');b.id='mdBack';b.type='button';b.className='md-back';
@@ -4768,7 +4775,12 @@ function mdBackOffer(from){
     b.addEventListener('click',mdGoBack);document.body.appendChild(b);
   }
   b.classList.add('show');
-  clearTimeout(mdBackTimer);mdBackTimer=setTimeout(mdBackHide,6000);
+  mdBackArmTimer();
+}
+// The button fades after a few seconds, but not while the outline is open: there the reader is still choosing
+function mdBackArmTimer(){
+  clearTimeout(mdBackTimer);
+  mdBackTimer=setTimeout(()=>{if(outlineOpen)mdBackArmTimer();else mdBackHide()},6000);
 }
 window.mdBackOffer=mdBackOffer;
 window.mdBackFrom=()=>currentMode==='read'?$('#reader').scrollTop:null;
@@ -4784,7 +4796,7 @@ function mdGoBack(){
     mdFlash(el);
   });
 }
-$('#reader').addEventListener('scroll',()=>{if(mdBack&&Math.abs($('#reader').scrollTop-mdBack.arrived)>$('#reader').clientHeight*1.5)mdBackHide()},{passive:true});
+$('#reader').addEventListener('scroll',()=>{if(mdBack&&!mdJumping&&Math.abs($('#reader').scrollTop-mdBack.arrived)>$('#reader').clientHeight*1.5)mdBackHide()},{passive:true});
 document.addEventListener('keydown',e=>{if(mdBack&&e.altKey&&!e.ctrlKey&&e.key==='ArrowLeft'){e.preventDefault();e.stopPropagation();mdGoBack()}},true);
 
 // Selecting text in Read copies it: selecting is the sign the reader wants it.
